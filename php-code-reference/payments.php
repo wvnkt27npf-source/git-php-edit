@@ -44,11 +44,44 @@ $settings = $conn->query("SELECT * FROM settings LIMIT 1")->fetch_assoc();
 $ultramsg_token = $settings['wa_token'] ?? '';
 $ultramsg_instance = $settings['wa_instance_id'] ?? '';
 
-// Company/Sender Details from settings
-$company_name = $settings['company_name'] ?? 'Our Company';
-$company_phone = $settings['company_phone'] ?? '';
-$sender_name = $settings['sender_name'] ?? $settings['contact_person'] ?? '';
-$company_address = $settings['company_address'] ?? '';
+// Company/Sender Details from settings (using actual field names from settings table)
+$company_name = $settings['display_name'] ?? $settings['company_name'] ?? 'Our Company';
+$email_signature = $settings['email_signature'] ?? '';
+$company_phone = $settings['company_phone'] ?? $settings['phone'] ?? '';
+
+// Parse email_signature to extract sender details
+// Format: "Thanks & Regards,\nRahul Jat\nBhilwara Spinners Limited\nAddress...\nMo: 9351545935"
+$signature_lines = array_filter(array_map('trim', explode("\n", $email_signature)));
+$sender_name = '';
+$sender_phone_from_sig = '';
+$sender_address = '';
+
+// Extract details from signature
+foreach ($signature_lines as $idx => $line) {
+    // Skip greeting lines like "Thanks & Regards,"
+    if (stripos($line, 'thanks') !== false || stripos($line, 'regards') !== false) continue;
+    
+    // First meaningful line after greeting is typically the person's name
+    if (empty($sender_name) && !empty($line) && stripos($line, 'mo:') === false && stripos($line, 'phone') === false) {
+        $sender_name = $line;
+        continue;
+    }
+    
+    // Extract phone from signature if present
+    if (stripos($line, 'mo:') !== false || stripos($line, 'mob:') !== false || stripos($line, 'phone') !== false) {
+        $sender_phone_from_sig = preg_replace('/[^0-9]/', '', $line);
+    }
+    
+    // Collect address lines
+    if (!empty($sender_name) && stripos($line, 'mo:') === false && $line != $sender_name && $line != $company_name) {
+        $sender_address .= (!empty($sender_address) ? ', ' : '') . $line;
+    }
+}
+
+// Use phone from signature if company_phone not set
+if (empty($company_phone) && !empty($sender_phone_from_sig)) {
+    $company_phone = $sender_phone_from_sig;
+}
 
 // =====================================================
 // WHATSAPP SEND FUNCTION
