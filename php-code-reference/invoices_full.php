@@ -73,52 +73,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     exit;
 }
 
-// =====================================================
-// EXPORT TO EXCEL
-// =====================================================
-if (isset($_GET['export']) && $_GET['export'] == 'excel') {
-    header('Content-Type: application/vnd.ms-excel');
-    header('Content-Disposition: attachment; filename="invoices_export_' . date('Y-m-d_His') . '.xls"');
-    
-    echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
-    echo '<head><meta charset="UTF-8"></head>';
-    echo '<body><table border="1">';
-    
-    echo '<tr style="background:#4CAF50; color:white; font-weight:bold;">';
-    echo '<th>Sr No</th><th>Invoice No</th><th>Date</th><th>Party Name</th><th>Party Phone</th>';
-    echo '<th>Agent Name</th><th>Agent Phone</th><th>Total Amount</th><th>Paid Amount</th>';
-    echo '<th>Outstanding</th><th>Status</th><th>Remarks</th></tr>';
-    
-    $export_query = "SELECT i.*, c.party_name, c.phone as party_phone, c.agent_name, c.agent_phone
-                     FROM invoices i LEFT JOIN clients c ON i.party_id = c.id
-                     ORDER BY i.date DESC, i.id DESC";
-    
-    $result = $conn->query($export_query);
-    $sr = 1;
-    
-    while ($row = $result->fetch_assoc()) {
-        $outstanding = ($row['total_amount'] ?? 0) - ($row['paid_amount'] ?? 0);
-        $row_class = $outstanding > 0 ? 'style="background:#fff3cd;"' : '';
-        
-        echo "<tr $row_class>";
-        echo '<td>' . $sr++ . '</td>';
-        echo '<td>' . htmlspecialchars($row['invoice_no']) . '</td>';
-        echo '<td>' . date('d-m-Y', strtotime($row['date'])) . '</td>';
-        echo '<td>' . htmlspecialchars($row['party_name']) . '</td>';
-        echo '<td>' . ($row['party_phone'] ?? '') . '</td>';
-        echo '<td>' . htmlspecialchars($row['agent_name'] ?? '') . '</td>';
-        echo '<td>' . ($row['agent_phone'] ?? '') . '</td>';
-        echo '<td style="text-align:right;">' . number_format($row['total_amount'], 2) . '</td>';
-        echo '<td style="text-align:right;">' . number_format($row['paid_amount'] ?? 0, 2) . '</td>';
-        echo '<td style="text-align:right; color:' . ($outstanding > 0 ? 'red' : 'green') . ';">' . number_format($outstanding, 2) . '</td>';
-        echo '<td>' . $row['status'] . '</td>';
-        echo '<td>' . htmlspecialchars($row['remarks'] ?? '') . '</td>';
-        echo '</tr>';
-    }
-    
-    echo '</table></body></html>';
-    exit;
-}
+// Excel export removed - only CSV supported now
 
 // =====================================================
 // IMPORT FROM CSV
@@ -139,6 +94,12 @@ if (isset($_POST['import_csv']) && !empty($_FILES['csv_file']['name'])) {
         
         while (($data = fgetcsv($handle)) !== FALSE) {
             if (count($data) < 4) { $skipped++; continue; }
+            
+            // Skip if this looks like a header row (check if first column is "Sr No" or similar)
+            $first_col = strtolower(trim($data[0]));
+            if (in_array($first_col, ['sr no', 'sr', 'sno', 's.no', 'invoice no', 'invoice_no', 'invoiceno', '#', 'no', 'no.'])) {
+                continue; // Skip header-like rows
+            }
             
             $invoice_no = $conn->real_escape_string(trim($data[0]));
             $invoice_date = date('Y-m-d', strtotime(trim($data[1])));
@@ -436,26 +397,12 @@ while($row = $res->fetch_assoc()) {
                 <i class="fas fa-plus-circle me-2"></i> Generate New Invoice
             </button>
             
-            <!-- Export Dropdown -->
-            <div class="dropdown">
-                <button class="btn btn-success btn-lg dropdown-toggle shadow-sm" type="button" data-bs-toggle="dropdown">
-                    <i class="fas fa-file-export me-1"></i> Export
-                </button>
-                <ul class="dropdown-menu">
-                    <li>
-                        <a class="dropdown-item" href="invoices.php?export=csv">
-                            <i class="fas fa-file-csv text-success me-2"></i> Export as CSV
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="invoices.php?export=excel">
-                            <i class="fas fa-file-excel text-success me-2"></i> Export as Excel
-                        </a>
-                    </li>
-                </ul>
-            </div>
+            <!-- Export CSV Button (One Click) -->
+            <a href="invoices.php?export=csv" class="btn btn-success btn-lg shadow-sm">
+                <i class="fas fa-file-csv me-1"></i> Export CSV
+            </a>
             
-            <!-- Import Button -->
+            <!-- Import CSV Button -->
             <button class="btn btn-info btn-lg text-white shadow-sm" data-bs-toggle="modal" data-bs-target="#importModal">
                 <i class="fas fa-file-import me-1"></i> Import CSV
             </button>
