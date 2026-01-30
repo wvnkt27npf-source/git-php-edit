@@ -144,14 +144,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['upload_file'])) {
 if (isset($_POST['create_inv'])) {
     $inv = $conn->real_escape_string(trim($_POST['invoice_no']));
     $pid = intval($_POST['party_id']);
-    $date = date('Y-m-d');
+    
+    // NEW: User selected date (default today)
+    $date = !empty($_POST['invoice_date']) ? $_POST['invoice_date'] : date('Y-m-d');
+    // NEW: Total amount from form
+    $total_amount = floatval($_POST['total_amount'] ?? 0);
     
     $check = $conn->query("SELECT id FROM invoices WHERE invoice_no = '$inv'");
     
     if($check->num_rows > 0){
         $alert_script = "<script>Swal.fire('Duplicate Error', 'Invoice Number $inv already exists!', 'warning');</script>";
     } else {
-        $conn->query("INSERT INTO invoices (invoice_no, party_id, date, status) VALUES ('$inv', '$pid', '$date', 'Open')");
+        $conn->query("INSERT INTO invoices (invoice_no, party_id, date, total_amount, status) VALUES ('$inv', '$pid', '$date', '$total_amount', 'Open')");
         // CHANGED: Silent redirect instead of popup
         $alert_script = "<script>window.location='invoices.php';</script>";
     }
@@ -256,6 +260,25 @@ while($row = $res->fetch_assoc()) {
                             ?>
                         </select>
                     </div>
+                    
+                    <!-- NEW: Invoice Date -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-muted">Invoice Date</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white"><i class="fas fa-calendar"></i></span>
+                            <input type="date" name="invoice_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                        </div>
+                    </div>
+                    
+                    <!-- NEW: Total Amount -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-muted">Total Amount (₹)</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white"><i class="fas fa-rupee-sign"></i></span>
+                            <input type="number" name="total_amount" class="form-control" step="0.01" min="0" placeholder="0.00" required>
+                        </div>
+                    </div>
+                    
                     <button type="submit" name="create_inv" class="btn btn-primary w-100 fw-bold shadow-sm">
                         Create Invoice <i class="fas fa-arrow-right ms-1"></i>
                     </button>

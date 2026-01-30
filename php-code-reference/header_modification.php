@@ -12,6 +12,13 @@
 <!-- Find the Reports section and add this item -->
 
 <li class="nav-item">
+    <a class="nav-link" href="payments.php">
+        <i class="fas fa-money-bill-wave text-success"></i>
+        <span>Payments Reminder</span>
+    </a>
+</li>
+
+<li class="nav-item">
     <a class="nav-link" href="outstanding_whatsapp.php">
         <i class="fab fa-whatsapp text-success"></i>
         <span>Outstanding - WhatsApp</span>
@@ -19,6 +26,9 @@
 </li>
 
 <!-- OR if using dropdown menu style -->
+<a class="dropdown-item" href="payments.php">
+    <i class="fas fa-money-bill-wave text-success"></i> Payments Reminder
+</a>
 <a class="dropdown-item" href="outstanding_whatsapp.php">
     <i class="fab fa-whatsapp text-success"></i> Outstanding Debtors WhatsApp
 </a>
