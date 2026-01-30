@@ -94,6 +94,7 @@ if (isset($_POST['import_csv']) && !empty($_FILES['csv_file']['name'])) {
         $header = fgetcsv($handle); // Skip header
         
         $imported = 0;
+        $updated = 0;
         $skipped = 0;
         $errors = [];
         
@@ -106,44 +107,52 @@ if (isset($_POST['import_csv']) && !empty($_FILES['csv_file']['name'])) {
                 continue; // Skip header-like rows
             }
             
-            $invoice_no = $conn->real_escape_string(trim($data[0]));
-            $invoice_date = date('Y-m-d', strtotime(trim($data[1])));
-            $party_name = $conn->real_escape_string(trim($data[2]));
-            $total_amount = floatval(str_replace(',', '', trim($data[3])));
-            $remarks = isset($data[4]) ? $conn->real_escape_string(trim($data[4])) : '';
-            
-            // Check duplicate
-            $check = $conn->query("SELECT id FROM invoices WHERE invoice_no = '$invoice_no'");
-            if ($check->num_rows > 0) {
-                $skipped++;
-                $errors[] = "Invoice #$invoice_no already exists";
-                continue;
-            }
+            // CSV format: SrNo, InvoiceNo, Date, PartyName, PartyPhone, AgentName, AgentPhone, TotalAmount, PaidAmount, Outstanding, Status, Remarks
+            $invoice_no = $conn->real_escape_string(trim($data[1])); // Column 1 = InvoiceNo
+            $invoice_date = date('Y-m-d', strtotime(trim($data[2]))); // Column 2 = Date
+            $party_name = $conn->real_escape_string(trim($data[3])); // Column 3 = PartyName
+            $party_phone = isset($data[4]) ? $conn->real_escape_string(trim($data[4])) : ''; // Column 4 = PartyPhone
+            $total_amount = isset($data[7]) ? floatval(str_replace(',', '', trim($data[7]))) : 0; // Column 7 = TotalAmount
+            $paid_amount = isset($data[8]) ? floatval(str_replace(',', '', trim($data[8]))) : 0; // Column 8 = PaidAmount
+            $status = isset($data[10]) ? $conn->real_escape_string(trim($data[10])) : 'Pending'; // Column 10 = Status
+            $remarks = isset($data[11]) ? $conn->real_escape_string(trim($data[11])) : ''; // Column 11 = Remarks
             
             // Find or create party
             $party_check = $conn->query("SELECT id FROM clients WHERE party_name = '$party_name'");
             if ($party_check->num_rows > 0) {
                 $party_id = $party_check->fetch_assoc()['id'];
             } else {
-                $conn->query("INSERT INTO clients (party_name) VALUES ('$party_name')");
+                $conn->query("INSERT INTO clients (party_name, phone) VALUES ('$party_name', '$party_phone')");
                 $party_id = $conn->insert_id;
             }
             
-            // Insert invoice
-            $conn->query("INSERT INTO invoices (invoice_no, date, party_id, total_amount, remarks, status) 
-                          VALUES ('$invoice_no', '$invoice_date', $party_id, $total_amount, '$remarks', 'Pending')");
-            
-            if ($conn->affected_rows > 0) {
-                $imported++;
+            // UPSERT: Check if invoice exists - UPDATE if yes, INSERT if no
+            $check = $conn->query("SELECT id FROM invoices WHERE invoice_no = '$invoice_no'");
+            if ($check->num_rows > 0) {
+                // UPDATE existing invoice
+                $existing_id = $check->fetch_assoc()['id'];
+                $conn->query("UPDATE invoices SET 
+                    date = '$invoice_date',
+                    party_id = $party_id,
+                    total_amount = $total_amount,
+                    paid_amount = $paid_amount,
+                    status = '$status',
+                    remarks = '$remarks',
+                    updated_at = NOW()
+                WHERE id = $existing_id");
+                $updated++;
             } else {
-                $skipped++;
+                // INSERT new invoice
+                $conn->query("INSERT INTO invoices (invoice_no, date, party_id, total_amount, paid_amount, remarks, status) 
+                              VALUES ('$invoice_no', '$invoice_date', $party_id, $total_amount, $paid_amount, '$remarks', '$status')");
+                $imported++;
             }
         }
         
         fclose($handle);
         
         $error_msg = count($errors) > 0 ? '<br><small>' . implode('<br>', array_slice($errors, 0, 5)) . '</small>' : '';
-        $alert_script = "<script>Swal.fire('Import Complete','Imported: $imported invoices<br>Skipped: $skipped$error_msg','info').then(()=>window.location='invoices.php');</script>";
+        $alert_script = "<script>Swal.fire('Import Complete','New: $imported<br>Updated: $updated<br>Skipped: $skipped$error_msg','success').then(()=>window.location='invoices.php');</script>";
     }
 }
 
