@@ -15,19 +15,25 @@ $ultramsg_token = $settings['wa_token'] ?? '';
 $ultramsg_instance = $settings['wa_instance_id'] ?? '';
 
 // UltraMsg Send Function (Text Only - No PDF for reminders)
+// FIXED: Token must be passed as GET parameter in URL
 function sendWhatsAppReminder($to, $message, $token, $instance) {
     $to = preg_replace('/[^0-9]/', '', $to);
     if (strlen($to) == 10) $to = '91' . $to;
     
+    // Token passed as GET parameter in URL (as required by UltraMsg API)
+    $url = "https://api.ultramsg.com/$instance/messages/chat?token=" . urlencode($token);
+    
     $curl = curl_init();
     curl_setopt_array($curl, [
-        CURLOPT_URL => "https://api.ultramsg.com/$instance/messages/chat",
+        CURLOPT_URL => $url,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => [
-            'token' => $token,
+        CURLOPT_POSTFIELDS => http_build_query([
             'to' => $to,
             'body' => $message
+        ]),
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/x-www-form-urlencoded'
         ]
     ]);
     $response = curl_exec($curl);
@@ -42,14 +48,16 @@ if (isset($_POST['send_reminder'])) {
     $send_to = $_POST['send_to'];
     $recipient_type = $_POST['recipient_type'];
     $total_amount = floatval($_POST['total_amount']);
+    $outstanding_amount = floatval($_POST['outstanding_amount'] ?? $total_amount);
     $bills = $_POST['bills'];
     $party_name = $_POST['party_name'];
     
-    // Build message
+    // Build message with both amounts
     $message = "🔔 *Payment Reminder*\n\n";
     $message .= "Party: *$party_name*\n\n";
     $message .= "📋 Outstanding Bills:\n$bills\n\n";
-    $message .= "💰 *Total Outstanding: ₹" . number_format($total_amount, 2) . "*\n\n";
+    $message .= "💵 *Bill Amount: ₹" . number_format($total_amount, 2) . "*\n";
+    $message .= "💰 *Outstanding: ₹" . number_format($outstanding_amount, 2) . "*\n\n";
     $message .= "Please arrange payment at earliest.\nThank you! 🙏";
     
     $result = sendWhatsAppReminder($send_to, $message, $ultramsg_token, $ultramsg_instance);
@@ -91,6 +99,9 @@ $view_mode = $_GET['view'] ?? 'party';
 // =====================================================
 // PARTY-WISE QUERY
 // =====================================================
+// Query with both Bill Amount and Total Amount
+// total_amount = Sum of all invoice amounts for party
+// outstanding_amount = Same as total for unpaid invoices (can be modified if partial payments exist)
 $party_query = "SELECT 
     c.id as client_id,
     c.party_name,
@@ -99,21 +110,25 @@ $party_query = "SELECT
     c.agent_phone,
     GROUP_CONCAT(DISTINCT i.invoice_no ORDER BY i.date DESC SEPARATOR ', ') as bill_numbers,
     GROUP_CONCAT(DISTINCT CONCAT('#', i.invoice_no, ' - ₹', FORMAT(COALESCE(i.total_amount, 0), 2)) ORDER BY i.date DESC SEPARATOR '\n') as bill_details,
-    SUM(COALESCE(i.total_amount, 0)) as total_outstanding,
+    SUM(COALESCE(i.total_amount, 0)) as total_amount,
+    SUM(COALESCE(i.total_amount, 0) - COALESCE(i.paid_amount, 0)) as outstanding_amount,
     COUNT(i.id) as invoice_count
 FROM clients c
 JOIN invoices i ON c.id = i.party_id
 WHERE i.status NOT IN ('Closed', 'Paid')
 GROUP BY c.id
-HAVING total_outstanding > 0
-ORDER BY total_outstanding DESC";
+HAVING outstanding_amount > 0
+ORDER BY outstanding_amount DESC";
 
 $party_result = $conn->query($party_query);
 $party_data = [];
 $grand_total = 0;
+$grand_total_amount = 0;
+$grand_outstanding = 0;
 while ($row = $party_result->fetch_assoc()) {
     $party_data[] = $row;
-    $grand_total += $row['total_outstanding'];
+    $grand_total_amount += $row['total_amount'];
+    $grand_outstanding += $row['outstanding_amount'];
 }
 
 // =====================================================
@@ -129,16 +144,18 @@ foreach ($party_data as $party) {
             'agent_name' => $agent,
             'agent_phone' => $agent_phone,
             'parties' => [],
-            'total' => 0
+            'total_amount' => 0,
+            'outstanding_amount' => 0
         ];
     }
     $agent_data[$agent]['parties'][] = $party;
-    $agent_data[$agent]['total'] += $party['total_outstanding'];
+    $agent_data[$agent]['total_amount'] += $party['total_amount'];
+    $agent_data[$agent]['outstanding_amount'] += $party['outstanding_amount'];
 }
 
-// Sort by total descending
+// Sort by outstanding descending
 uasort($agent_data, function($a, $b) {
-    return $b['total'] <=> $a['total'];
+    return $b['outstanding_amount'] <=> $a['outstanding_amount'];
 });
 ?>
 
@@ -228,15 +245,19 @@ uasort($agent_data, function($a, $b) {
             </div>
         </div>
         
-        <!-- Total Banner -->
+        <!-- Total Banner with Both Amounts -->
         <div class="total-banner">
             <div class="row align-items-center">
-                <div class="col-md-8">
-                    <h4 class="mb-0"><i class="fas fa-chart-line"></i> Total Outstanding</h4>
-                    <small><?= count($party_data) ?> parties with pending payments</small>
+                <div class="col-md-4">
+                    <h5 class="mb-0"><i class="fas fa-file-invoice-dollar"></i> Total Bill Amount</h5>
+                    <h3 class="mb-0">₹<?= number_format($grand_total_amount, 2) ?></h3>
+                </div>
+                <div class="col-md-4">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-circle"></i> Outstanding Amount</h5>
+                    <h3 class="mb-0 text-warning">₹<?= number_format($grand_outstanding, 2) ?></h3>
                 </div>
                 <div class="col-md-4 text-end">
-                    <h2 class="mb-0">₹<?= number_format($grand_total, 2) ?></h2>
+                    <small><?= count($party_data) ?> parties with pending payments</small>
                 </div>
             </div>
         </div>
@@ -258,6 +279,7 @@ uasort($agent_data, function($a, $b) {
                                 <th>Phone</th>
                                 <th>Agent</th>
                                 <th>Bills</th>
+                                <th class="text-end">Bill Amount</th>
                                 <th class="text-end">Outstanding</th>
                                 <th class="text-center">Action</th>
                             </tr>
@@ -294,7 +316,10 @@ uasort($agent_data, function($a, $b) {
                                     <br><small class="text-muted"><?= htmlspecialchars($party['bill_numbers']) ?></small>
                                 </td>
                                 <td class="text-end">
-                                    <strong class="text-danger fs-5">₹<?= number_format($party['total_outstanding'], 2) ?></strong>
+                                    <strong class="text-primary">₹<?= number_format($party['total_amount'], 2) ?></strong>
+                                </td>
+                                <td class="text-end">
+                                    <strong class="text-danger fs-5">₹<?= number_format($party['outstanding_amount'], 2) ?></strong>
                                 </td>
                                 <td class="text-center">
                                     <?php if (!empty($send_to)): ?>
@@ -303,7 +328,8 @@ uasort($agent_data, function($a, $b) {
                                         <input type="hidden" name="client_id" value="<?= $party['client_id'] ?>">
                                         <input type="hidden" name="send_to" value="<?= htmlspecialchars($send_to) ?>">
                                         <input type="hidden" name="recipient_type" value="<?= $recipient_type ?>">
-                                        <input type="hidden" name="total_amount" value="<?= $party['total_outstanding'] ?>">
+                                        <input type="hidden" name="total_amount" value="<?= $party['total_amount'] ?>">
+                                        <input type="hidden" name="outstanding_amount" value="<?= $party['outstanding_amount'] ?>">
                                         <input type="hidden" name="party_name" value="<?= htmlspecialchars($party['party_name']) ?>">
                                         <input type="hidden" name="bills" value="<?= htmlspecialchars($party['bill_details']) ?>">
                                         <button type="submit" class="btn btn-whatsapp btn-sm">
@@ -340,7 +366,7 @@ uasort($agent_data, function($a, $b) {
                                 <small class="ms-2">(<?= htmlspecialchars($agent['agent_phone']) ?>)</small>
                             <?php endif; ?>
                         </h5>
-                        <small><?= count($agent['parties']) ?> parties | ₹<?= number_format($agent['total'], 2) ?> total</small>
+                        <small><?= count($agent['parties']) ?> parties | Bill: ₹<?= number_format($agent['total_amount'], 2) ?> | Outstanding: ₹<?= number_format($agent['outstanding_amount'], 2) ?></small>
                     </div>
                     <div>
                         <?php if (!$is_direct && !empty($agent['agent_phone'])): ?>
@@ -348,14 +374,14 @@ uasort($agent_data, function($a, $b) {
                             // Build parties list for agent message
                             $parties_list = '';
                             foreach ($agent['parties'] as $p) {
-                                $parties_list .= "• " . $p['party_name'] . " - ₹" . number_format($p['total_outstanding'], 2) . " (" . $p['invoice_count'] . " bills)\n";
+                                $parties_list .= "• " . $p['party_name'] . " - Outstanding: ₹" . number_format($p['outstanding_amount'], 2) . " (Bill: ₹" . number_format($p['total_amount'], 2) . ")\n";
                             }
                         ?>
                         <form method="POST" class="d-inline">
                             <input type="hidden" name="send_agent_reminder" value="1">
                             <input type="hidden" name="agent_phone" value="<?= htmlspecialchars($agent['agent_phone']) ?>">
                             <input type="hidden" name="agent_name" value="<?= htmlspecialchars($agent['agent_name']) ?>">
-                            <input type="hidden" name="total_amount" value="<?= $agent['total'] ?>">
+                            <input type="hidden" name="total_amount" value="<?= $agent['outstanding_amount'] ?>">
                             <input type="hidden" name="parties_list" value="<?= htmlspecialchars($parties_list) ?>">
                             <button type="submit" class="btn btn-light btn-sm">
                                 <i class="fab fa-whatsapp text-success"></i> Send All to Agent
@@ -375,12 +401,17 @@ uasort($agent_data, function($a, $b) {
                                 <strong><?= htmlspecialchars($party['party_name']) ?></strong>
                                 <br><small class="text-muted"><?= htmlspecialchars($party['party_phone']) ?></small>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <span class="badge bg-warning text-dark"><?= $party['invoice_count'] ?> bills</span>
                                 <br><small class="text-muted"><?= htmlspecialchars($party['bill_numbers']) ?></small>
                             </div>
-                            <div class="col-md-3 text-end">
-                                <strong class="text-danger">₹<?= number_format($party['total_outstanding'], 2) ?></strong>
+                            <div class="col-md-2 text-end">
+                                <small class="text-muted">Bill:</small><br>
+                                <strong class="text-primary">₹<?= number_format($party['total_amount'], 2) ?></strong>
+                            </div>
+                            <div class="col-md-2 text-end">
+                                <small class="text-muted">Outstanding:</small><br>
+                                <strong class="text-danger">₹<?= number_format($party['outstanding_amount'], 2) ?></strong>
                             </div>
                             <div class="col-md-2 text-end">
                                 <?php if (!empty($party['party_phone'])): ?>
