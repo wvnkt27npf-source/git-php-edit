@@ -1,35 +1,8 @@
 <?php
 include 'db.php';
-include 'header.php';
-
-// --- SELECT2 CSS ---
-echo '<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />';
-echo '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />';
-
-$alert_script = ""; // Global variable for alerts
 
 // =====================================================
-// API: GET INVOICE DATA FOR EDIT
-// =====================================================
-if (isset($_GET['get_invoice']) && isset($_GET['id'])) {
-    header('Content-Type: application/json');
-    $inv_id = intval($_GET['id']);
-    
-    $result = $conn->query("SELECT i.*, c.party_name 
-                            FROM invoices i 
-                            LEFT JOIN clients c ON i.party_id = c.id 
-                            WHERE i.id = $inv_id");
-    
-    if ($result->num_rows > 0) {
-        echo json_encode($result->fetch_assoc());
-    } else {
-        echo json_encode(['error' => 'Invoice not found']);
-    }
-    exit;
-}
-
-// =====================================================
-// EXPORT TO CSV
+// EXPORT TO CSV - MUST BE BEFORE ANY HTML OUTPUT!
 // =====================================================
 if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     header('Content-Type: text/csv; charset=utf-8');
@@ -74,7 +47,38 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     exit;
 }
 
-// Excel export removed - only CSV supported now
+// =====================================================
+// API: GET INVOICE DATA FOR EDIT - BEFORE HTML OUTPUT
+// =====================================================
+if (isset($_GET['get_invoice']) && isset($_GET['id'])) {
+    header('Content-Type: application/json');
+    $inv_id = intval($_GET['id']);
+    
+    $result = $conn->query("SELECT i.*, c.party_name 
+                            FROM invoices i 
+                            LEFT JOIN clients c ON i.party_id = c.id 
+                            WHERE i.id = $inv_id");
+    
+    if ($result->num_rows > 0) {
+        echo json_encode($result->fetch_assoc());
+    } else {
+        echo json_encode(['error' => 'Invoice not found']);
+    }
+    exit;
+}
+
+// NOW include header after all non-HTML handlers
+include 'header.php';
+
+// --- SELECT2 CSS ---
+echo '<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />';
+echo '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />';
+
+$alert_script = ""; // Global variable for alerts
+
+// =====================================================
+// IMPORT FROM CSV
+// =====================================================
 
 // =====================================================
 // IMPORT FROM CSV
