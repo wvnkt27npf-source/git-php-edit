@@ -137,8 +137,7 @@ if (isset($_POST['import_csv']) && !empty($_FILES['csv_file']['name'])) {
                     total_amount = $total_amount,
                     paid_amount = $paid_amount,
                     status = '$status',
-                    remarks = '$remarks',
-                    updated_at = NOW()
+                    remarks = '$remarks'
                 WHERE id = $existing_id");
                 $updated++;
             } else {
