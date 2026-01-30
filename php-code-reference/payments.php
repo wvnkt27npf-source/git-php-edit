@@ -8,7 +8,8 @@
  * - Bill-wise Outstanding with Mark Payment Received
  * - Payment History tracking
  * - Today's Collection summary
- * - WhatsApp Reminders (Party/Agent wise)
+ * - WhatsApp Reminders (Party/Agent wise) with Send Tracking
+ * - Auto-mark sent, Auto-unmark on new invoice
  * - Search and Filter options
  * 
  * Database Requirements:
@@ -23,15 +24,31 @@
  *        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
  *        FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
  *    );
+ * 3. CREATE TABLE wa_reminder_log (
+ *        id INT AUTO_INCREMENT PRIMARY KEY,
+ *        client_id INT NOT NULL,
+ *        recipient_type ENUM('Agent', 'Party') DEFAULT 'Party',
+ *        sent_to VARCHAR(20),
+ *        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ *        last_invoice_id INT NOT NULL,
+ *        status ENUM('Sent', 'Failed') DEFAULT 'Sent',
+ *        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+ *    );
  */
 
 include 'db.php';
 include 'header.php';
 
-// Get UltraMsg settings from database
+// Get UltraMsg settings AND Company info from database
 $settings = $conn->query("SELECT * FROM settings LIMIT 1")->fetch_assoc();
 $ultramsg_token = $settings['wa_token'] ?? '';
 $ultramsg_instance = $settings['wa_instance_id'] ?? '';
+
+// Company/Sender Details from settings
+$company_name = $settings['company_name'] ?? 'Our Company';
+$company_phone = $settings['company_phone'] ?? '';
+$sender_name = $settings['sender_name'] ?? $settings['contact_person'] ?? '';
+$company_address = $settings['company_address'] ?? '';
 
 // =====================================================
 // WHATSAPP SEND FUNCTION
@@ -59,6 +76,95 @@ function sendWhatsAppReminder($to, $message, $token, $instance) {
     $response = curl_exec($curl);
     curl_close($curl);
     return json_decode($response, true);
+}
+
+// =====================================================
+// CHECK IF REMINDER ALREADY SENT (and no new invoices added)
+// =====================================================
+function isReminderSent($conn, $client_id, $recipient_type) {
+    // Get last reminder log for this client
+    $log = $conn->query("SELECT * FROM wa_reminder_log 
+                         WHERE client_id = $client_id AND recipient_type = '$recipient_type' 
+                         ORDER BY sent_at DESC LIMIT 1")->fetch_assoc();
+    
+    if (!$log) return false;
+    
+    // Check if any new invoice added after the reminder was sent
+    $last_sent_invoice_id = $log['last_invoice_id'];
+    $new_invoice = $conn->query("SELECT id FROM invoices 
+                                  WHERE party_id = $client_id AND id > $last_sent_invoice_id 
+                                  AND status NOT IN ('Closed', 'Paid') 
+                                  LIMIT 1")->fetch_assoc();
+    
+    // If new invoice found, reminder should be re-sent
+    if ($new_invoice) return false;
+    
+    return $log; // Return log data if sent and no new invoices
+}
+
+// =====================================================
+// LOG REMINDER SENT
+// =====================================================
+function logReminderSent($conn, $client_id, $recipient_type, $sent_to, $status = 'Sent') {
+    // Get the latest invoice ID for this client
+    $latest = $conn->query("SELECT MAX(id) as max_id FROM invoices WHERE party_id = $client_id")->fetch_assoc();
+    $last_invoice_id = $latest['max_id'] ?? 0;
+    
+    $sent_to = $conn->real_escape_string($sent_to);
+    $conn->query("INSERT INTO wa_reminder_log (client_id, recipient_type, sent_to, last_invoice_id, status) 
+                  VALUES ($client_id, '$recipient_type', '$sent_to', $last_invoice_id, '$status')");
+}
+
+// =====================================================
+// BUILD PROFESSIONAL MESSAGE WITH SIGNATURE
+// =====================================================
+function buildReminderMessage($party_name, $bills, $total_bill, $outstanding, $company_name, $sender_name, $company_phone, $is_agent = false, $agent_name = '', $parties_list = '') {
+    $message = "";
+    
+    if ($is_agent) {
+        // Agent Message
+        $message .= "🔔 *PAYMENT COLLECTION REMINDER*\n";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
+        $message .= "Dear *$agent_name* Ji,\n\n";
+        $message .= "Namaskar! 🙏\n\n";
+        $message .= "Aapke through humari kuch pending payments hain:\n\n";
+        $message .= "📋 *Outstanding Parties:*\n";
+        $message .= "$parties_list\n";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $message .= "💰 *Total Collection Due: ₹" . number_format($outstanding, 2) . "*\n";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
+        $message .= "Kripya jaldi se jaldi collection karwa dein.\n";
+        $message .= "Dhanyawad! 🙏\n\n";
+    } else {
+        // Party Message
+        $message .= "🔔 *PAYMENT REMINDER*\n";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
+        $message .= "Dear *$party_name* Ji,\n\n";
+        $message .= "Namaskar! 🙏\n\n";
+        $message .= "Humari records ke anusar aapki kuch pending payments hain:\n\n";
+        $message .= "📋 *Outstanding Bills:*\n";
+        $message .= "$bills\n";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $message .= "💵 *Total Bill: ₹" . number_format($total_bill, 2) . "*\n";
+        $message .= "💰 *Outstanding: ₹" . number_format($outstanding, 2) . "*\n";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
+        $message .= "Kripya apni suvidha anusar payment karein.\n";
+        $message .= "Dhanyawad! 🙏\n\n";
+    }
+    
+    // Signature
+    $message .= "━━━━━━━━━━━━━━━━━━━━━\n";
+    $message .= "📞 *From:*\n";
+    $message .= "*$company_name*\n";
+    if (!empty($sender_name)) {
+        $message .= "$sender_name\n";
+    }
+    if (!empty($company_phone)) {
+        $message .= "📱 $company_phone\n";
+    }
+    $message .= "━━━━━━━━━━━━━━━━━━━━━\n";
+    
+    return $message;
 }
 
 // =====================================================
@@ -91,7 +197,7 @@ if (isset($_POST['mark_payment'])) {
 }
 
 // =====================================================
-// HANDLE WHATSAPP REMINDERS
+// HANDLE WHATSAPP REMINDERS - PARTY
 // =====================================================
 if (isset($_POST['send_reminder'])) {
     $client_id = intval($_POST['client_id']);
@@ -102,19 +208,27 @@ if (isset($_POST['send_reminder'])) {
     $bills = $_POST['bills'];
     $party_name = $_POST['party_name'];
     
-    // Build message with both amounts
-    $message = "🔔 *Payment Reminder*\n\n";
-    $message .= "Party: *$party_name*\n\n";
-    $message .= "📋 Outstanding Bills:\n$bills\n\n";
-    $message .= "💵 *Bill Amount: ₹" . number_format($total_amount, 2) . "*\n";
-    $message .= "💰 *Outstanding: ₹" . number_format($outstanding_amount, 2) . "*\n\n";
-    $message .= "Please arrange payment at earliest.\nThank you! 🙏";
+    // Build professional message with signature
+    $message = buildReminderMessage(
+        $party_name, 
+        $bills, 
+        $total_amount, 
+        $outstanding_amount, 
+        $company_name, 
+        $sender_name, 
+        $company_phone,
+        false
+    );
     
     $result = sendWhatsAppReminder($send_to, $message, $ultramsg_token, $ultramsg_instance);
     
     if (isset($result['sent']) && $result['sent'] == 'true') {
-        $alert_script = "<script>Swal.fire('Sent!', 'Reminder sent to $recipient_type successfully', 'success');</script>";
+        // Log the successful send
+        logReminderSent($conn, $client_id, 'Party', $send_to, 'Sent');
+        $alert_script = "<script>Swal.fire('Sent!', 'Reminder sent to $party_name successfully', 'success');</script>";
     } else {
+        // Log the failed attempt
+        logReminderSent($conn, $client_id, 'Party', $send_to, 'Failed');
         $error_msg = $result['error'] ?? 'Unknown error';
         $alert_script = "<script>Swal.fire('Error', 'Failed to send: $error_msg', 'error');</script>";
     }
@@ -126,18 +240,41 @@ if (isset($_POST['send_agent_reminder'])) {
     $agent_name = $_POST['agent_name'];
     $total_amount = floatval($_POST['total_amount']);
     $parties_list = $_POST['parties_list'];
+    $client_ids = explode(',', $_POST['client_ids'] ?? '');
     
-    $message = "🔔 *Payment Collection Reminder*\n\n";
-    $message .= "Agent: *$agent_name*\n\n";
-    $message .= "📋 Outstanding Parties:\n$parties_list\n\n";
-    $message .= "💰 *Total Collection: ₹" . number_format($total_amount, 2) . "*\n\n";
-    $message .= "Please collect payments.\nThank you! 🙏";
+    // Build professional message with signature
+    $message = buildReminderMessage(
+        '', 
+        '', 
+        $total_amount, 
+        $total_amount, 
+        $company_name, 
+        $sender_name, 
+        $company_phone,
+        true,
+        $agent_name,
+        $parties_list
+    );
     
     $result = sendWhatsAppReminder($agent_phone, $message, $ultramsg_token, $ultramsg_instance);
     
     if (isset($result['sent']) && $result['sent'] == 'true') {
+        // Log for all clients under this agent
+        foreach ($client_ids as $cid) {
+            $cid = intval($cid);
+            if ($cid > 0) {
+                logReminderSent($conn, $cid, 'Agent', $agent_phone, 'Sent');
+            }
+        }
         $alert_script = "<script>Swal.fire('Sent!', 'Reminder sent to Agent $agent_name successfully', 'success');</script>";
     } else {
+        // Log failed for all clients
+        foreach ($client_ids as $cid) {
+            $cid = intval($cid);
+            if ($cid > 0) {
+                logReminderSent($conn, $cid, 'Agent', $agent_phone, 'Failed');
+            }
+        }
         $error_msg = $result['error'] ?? 'Unknown error';
         $alert_script = "<script>Swal.fire('Error', 'Failed to send: $error_msg', 'error');</script>";
     }
@@ -251,12 +388,16 @@ foreach ($outstanding_invoices as $inv) {
                 'agent_phone' => $inv['agent_phone'],
                 'invoices' => [],
                 'total_bill' => 0,
-                'total_outstanding' => 0
+                'total_outstanding' => 0,
+                'client_ids' => []
             ];
         }
         $agent_grouped[$agent_key]['invoices'][] = $inv;
         $agent_grouped[$agent_key]['total_bill'] += $inv['total_amount'];
         $agent_grouped[$agent_key]['total_outstanding'] += $inv['outstanding'];
+        if (!in_array($inv['client_id'], $agent_grouped[$agent_key]['client_ids'])) {
+            $agent_grouped[$agent_key]['client_ids'][] = $inv['client_id'];
+        }
     } else {
         // Direct party
         $party_key = $inv['party_name'] . '|' . $inv['party_phone'];
@@ -264,6 +405,7 @@ foreach ($outstanding_invoices as $inv) {
             $party_direct[$party_key] = [
                 'party_name' => $inv['party_name'],
                 'party_phone' => $inv['party_phone'],
+                'client_id' => $inv['client_id'],
                 'invoices' => [],
                 'total_bill' => 0,
                 'total_outstanding' => 0
@@ -300,6 +442,20 @@ foreach ($outstanding_invoices as $inv) {
         .badge-partial {
             background: linear-gradient(135deg, #ffc107, #fd7e14);
             color: #000;
+        }
+        
+        .badge-sent {
+            background: linear-gradient(135deg, #25D366, #128C7E);
+            color: white;
+            font-size: 10px;
+            padding: 3px 8px;
+        }
+        
+        .badge-pending {
+            background: #ffc107;
+            color: #000;
+            font-size: 10px;
+            padding: 3px 8px;
         }
         
         .nav-tabs .nav-link {
@@ -354,6 +510,13 @@ foreach ($outstanding_invoices as $inv) {
             color: white;
             border-radius: 9px 9px 0 0;
         }
+        .whatsapp-card.sent {
+            border-color: #6c757d;
+            opacity: 0.85;
+        }
+        .whatsapp-card.sent .card-header {
+            background: linear-gradient(135deg, #6c757d, #495057);
+        }
         
         .payment-mode-badge {
             padding: 4px 10px;
@@ -375,6 +538,12 @@ foreach ($outstanding_invoices as $inv) {
         .btn-whatsapp:hover {
             background: #128C7E;
             color: white;
+        }
+        .btn-whatsapp.resend {
+            background: #6c757d;
+        }
+        .btn-whatsapp.resend:hover {
+            background: #495057;
         }
     </style>
 </head>
@@ -696,16 +865,34 @@ foreach ($outstanding_invoices as $inv) {
 
             <!-- TAB 4: WhatsApp Reminders -->
             <div class="tab-pane fade" id="whatsapp" role="tabpanel">
+                <!-- Legend -->
+                <div class="alert alert-info mb-4">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Auto-Tracking:</strong> 
+                    <span class="badge badge-sent me-1">✓ Sent</span> = Message already sent (no new invoices)
+                    <span class="badge badge-pending ms-2">⏳ Pending</span> = Message pending or new invoice added
+                </div>
+                
                 <div class="row">
                     <!-- Agent-wise Reminders -->
                     <div class="col-md-6">
                         <h5 class="mb-3"><i class="fas fa-user-tie text-primary"></i> Agent-wise Reminders</h5>
                         <?php if (count($agent_grouped) > 0): ?>
                             <?php foreach ($agent_grouped as $agent): ?>
-                                <div class="whatsapp-card card">
+                                <?php
+                                    // Check if reminder already sent for first client
+                                    $first_client_id = $agent['client_ids'][0] ?? 0;
+                                    $is_sent = isReminderSent($conn, $first_client_id, 'Agent');
+                                ?>
+                                <div class="whatsapp-card card <?php echo $is_sent ? 'sent' : ''; ?>">
                                     <div class="card-header d-flex justify-content-between align-items-center">
                                         <div>
                                             <strong><?php echo htmlspecialchars($agent['agent_name']); ?></strong>
+                                            <?php if ($is_sent): ?>
+                                                <span class="badge badge-sent ms-2">✓ Sent</span>
+                                            <?php else: ?>
+                                                <span class="badge badge-pending ms-2">⏳ Pending</span>
+                                            <?php endif; ?>
                                             <br><small><i class="fas fa-phone"></i> <?php echo $agent['agent_phone']; ?></small>
                                         </div>
                                         <div class="text-end">
@@ -719,16 +906,12 @@ foreach ($outstanding_invoices as $inv) {
                                             <strong>Total Bill:</strong> ₹<?php echo number_format($agent['total_bill'], 2); ?><br>
                                             <strong class="text-danger">Outstanding:</strong> ₹<?php echo number_format($agent['total_outstanding'], 2); ?>
                                         </p>
-                                        <small class="text-muted">Bills: 
-                                            <?php 
-                                            $bill_list = [];
-                                            foreach ($agent['invoices'] as $inv) {
-                                                $bill_list[] = '#' . $inv['invoice_no'] . ' (₹' . number_format($inv['outstanding'], 0) . ')';
-                                            }
-                                            echo implode(', ', array_slice($bill_list, 0, 5));
-                                            if (count($bill_list) > 5) echo ' +' . (count($bill_list) - 5) . ' more';
-                                            ?>
-                                        </small>
+                                        <?php if ($is_sent): ?>
+                                            <small class="text-muted">
+                                                <i class="fas fa-check-circle text-success"></i> 
+                                                Last sent: <?php echo date('d M Y, h:i A', strtotime($is_sent['sent_at'])); ?>
+                                            </small>
+                                        <?php endif; ?>
                                         <hr>
                                         <?php
                                             // Build parties list for agent message
@@ -755,8 +938,10 @@ foreach ($outstanding_invoices as $inv) {
                                             <input type="hidden" name="agent_name" value="<?php echo htmlspecialchars($agent['agent_name']); ?>">
                                             <input type="hidden" name="total_amount" value="<?php echo $agent['total_outstanding']; ?>">
                                             <input type="hidden" name="parties_list" value="<?php echo htmlspecialchars($parties_list); ?>">
-                                            <button type="submit" class="btn btn-whatsapp btn-sm w-100">
-                                                <i class="fab fa-whatsapp"></i> Send Reminder to Agent
+                                            <input type="hidden" name="client_ids" value="<?php echo implode(',', $agent['client_ids']); ?>">
+                                            <button type="submit" class="btn btn-whatsapp btn-sm w-100 <?php echo $is_sent ? 'resend' : ''; ?>">
+                                                <i class="fab fa-whatsapp"></i> 
+                                                <?php echo $is_sent ? 'Re-send Reminder' : 'Send Reminder'; ?> to Agent
                                             </button>
                                         </form>
                                     </div>
@@ -772,10 +957,19 @@ foreach ($outstanding_invoices as $inv) {
                         <h5 class="mb-3"><i class="fas fa-building text-warning"></i> Direct Party Reminders</h5>
                         <?php if (count($party_direct) > 0): ?>
                             <?php foreach ($party_direct as $party): ?>
-                                <div class="whatsapp-card card">
+                                <?php
+                                    // Check if reminder already sent
+                                    $is_sent = isReminderSent($conn, $party['client_id'], 'Party');
+                                ?>
+                                <div class="whatsapp-card card <?php echo $is_sent ? 'sent' : ''; ?>">
                                     <div class="card-header d-flex justify-content-between align-items-center">
                                         <div>
                                             <strong><?php echo htmlspecialchars($party['party_name']); ?></strong>
+                                            <?php if ($is_sent): ?>
+                                                <span class="badge badge-sent ms-2">✓ Sent</span>
+                                            <?php else: ?>
+                                                <span class="badge badge-pending ms-2">⏳ Pending</span>
+                                            <?php endif; ?>
                                             <br><small><i class="fas fa-phone"></i> <?php echo $party['party_phone']; ?></small>
                                         </div>
                                         <div class="text-end">
@@ -789,6 +983,12 @@ foreach ($outstanding_invoices as $inv) {
                                             <strong>Total Bill:</strong> ₹<?php echo number_format($party['total_bill'], 2); ?><br>
                                             <strong class="text-danger">Outstanding:</strong> ₹<?php echo number_format($party['total_outstanding'], 2); ?>
                                         </p>
+                                        <?php if ($is_sent): ?>
+                                            <small class="text-muted">
+                                                <i class="fas fa-check-circle text-success"></i> 
+                                                Last sent: <?php echo date('d M Y, h:i A', strtotime($is_sent['sent_at'])); ?>
+                                            </small>
+                                        <?php endif; ?>
                                         <hr>
                                         <?php
                                             $bill_details = '';
@@ -798,15 +998,16 @@ foreach ($outstanding_invoices as $inv) {
                                         ?>
                                         <form method="POST">
                                             <input type="hidden" name="send_reminder" value="1">
-                                            <input type="hidden" name="client_id" value="<?php echo $party['invoices'][0]['client_id'] ?? 0; ?>">
+                                            <input type="hidden" name="client_id" value="<?php echo $party['client_id']; ?>">
                                             <input type="hidden" name="send_to" value="<?php echo htmlspecialchars($party['party_phone']); ?>">
                                             <input type="hidden" name="recipient_type" value="Party">
                                             <input type="hidden" name="total_amount" value="<?php echo $party['total_bill']; ?>">
                                             <input type="hidden" name="outstanding_amount" value="<?php echo $party['total_outstanding']; ?>">
                                             <input type="hidden" name="party_name" value="<?php echo htmlspecialchars($party['party_name']); ?>">
                                             <input type="hidden" name="bills" value="<?php echo htmlspecialchars($bill_details); ?>">
-                                            <button type="submit" class="btn btn-whatsapp btn-sm w-100">
-                                                <i class="fab fa-whatsapp"></i> Send Reminder to Party
+                                            <button type="submit" class="btn btn-whatsapp btn-sm w-100 <?php echo $is_sent ? 'resend' : ''; ?>">
+                                                <i class="fab fa-whatsapp"></i> 
+                                                <?php echo $is_sent ? 'Re-send Reminder' : 'Send Reminder'; ?> to Party
                                             </button>
                                         </form>
                                     </div>
