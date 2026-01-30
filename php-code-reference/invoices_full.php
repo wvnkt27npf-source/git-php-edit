@@ -91,14 +91,20 @@ if (isset($_POST['import_csv']) && !empty($_FILES['csv_file']['name'])) {
         $alert_script = "<script>Swal.fire('Error','Please upload a CSV file only','error');</script>";
     } else {
         $handle = fopen($file['tmp_name'], 'r');
-        $header = fgetcsv($handle); // Skip header
+        
+        // Detect delimiter: TAB or COMMA
+        $first_line = fgets($handle);
+        rewind($handle);
+        $delimiter = (strpos($first_line, "\t") !== false) ? "\t" : ",";
+        
+        $header = fgetcsv($handle, 0, $delimiter); // Skip header with correct delimiter
         
         $imported = 0;
         $updated = 0;
         $skipped = 0;
         $errors = [];
         
-        while (($data = fgetcsv($handle)) !== FALSE) {
+        while (($data = fgetcsv($handle, 0, $delimiter)) !== FALSE) {
             if (count($data) < 4) { $skipped++; continue; }
             
             // Skip if this looks like a header row (check if first column is "Sr No" or similar)
