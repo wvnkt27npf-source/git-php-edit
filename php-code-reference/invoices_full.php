@@ -38,9 +38,10 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     $output = fopen('php://output', 'w');
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM for Excel
     
+    // Write headers without spaces to avoid auto-quoting
     fputcsv($output, [
-        'Sr No', 'Invoice No', 'Date', 'Party Name', 'Party Phone',
-        'Agent Name', 'Agent Phone', 'Total Amount', 'Paid Amount',
+        'SrNo', 'InvoiceNo', 'Date', 'PartyName', 'PartyPhone',
+        'AgentName', 'AgentPhone', 'TotalAmount', 'PaidAmount',
         'Outstanding', 'Status', 'Remarks'
     ]);
     
