@@ -235,59 +235,17 @@ while($row = $res->fetch_assoc()) {
 }
 </style>
 
-<div class="row">
-    <div class="col-md-4 mb-4">
-        <div class="card shadow-sm h-100 border-0">
-            <div class="card-header bg-primary text-white fw-bold">
-                <i class="fas fa-plus-circle"></i> Generate Invoice
-            </div>
-            <div class="card-body bg-light">
-                <form method="POST">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold text-muted">Invoice Number</label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-white"><i class="fas fa-hashtag"></i></span>
-                            <input type="text" name="invoice_no" class="form-control fw-bold" required placeholder="e.g. 1001" autocomplete="off">
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold text-muted">Select Client</label>
-                        <select name="party_id" class="form-select select2" required>
-                            <option value="">Choose Client...</option>
-                            <?php 
-                            $c = $conn->query("SELECT * FROM clients ORDER BY party_name ASC");
-                            while($r=$c->fetch_assoc()) echo "<option value='{$r['id']}'>".htmlspecialchars($r['party_name'])."</option>";
-                            ?>
-                        </select>
-                    </div>
-                    
-                    <!-- NEW: Invoice Date -->
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold text-muted">Invoice Date</label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-white"><i class="fas fa-calendar"></i></span>
-                            <input type="date" name="invoice_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
-                        </div>
-                    </div>
-                    
-                    <!-- NEW: Total Amount -->
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold text-muted">Total Amount (₹)</label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-white"><i class="fas fa-rupee-sign"></i></span>
-                            <input type="number" name="total_amount" class="form-control" step="0.01" min="0" placeholder="0.00" required>
-                        </div>
-                    </div>
-                    
-                    <button type="submit" name="create_inv" class="btn btn-primary w-100 fw-bold shadow-sm">
-                        Create Invoice <i class="fas fa-arrow-right ms-1"></i>
-                    </button>
-                </form>
-            </div>
-        </div>
+<!-- Generate Invoice Button -->
+<div class="row mb-4">
+    <div class="col-12">
+        <button type="button" class="btn btn-primary btn-lg shadow-sm" onclick="openGenerateInvoiceModal()">
+            <i class="fas fa-plus-circle me-2"></i> Generate New Invoice
+        </button>
     </div>
+</div>
 
-    <div class="col-md-8 mb-4">
+<div class="row">
+    <div class="col-12 mb-4">
         <div class="card shadow-sm h-100 border-warning" style="border-left: 5px solid #ffc107;">
             <div class="card-header bg-warning bg-opacity-10 text-dark fw-bold d-flex justify-content-between align-items-center">
                 <span><i class="fas fa-history text-warning me-2"></i> Pending Documentation</span>
@@ -296,7 +254,15 @@ while($row = $res->fetch_assoc()) {
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table id="pendingTable" class="table table-hover align-middle mb-0 datatable" style="width:100%">
-                        <thead class="bg-light"><tr><th>Invoice</th><th>Uploaded Docs</th><th class="text-end">Actions</th></tr></thead>
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Invoice</th>
+                                <th>Date</th>
+                                <th>Amount (₹)</th>
+                                <th>Uploaded Docs</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
                         <tbody>
                             <?php foreach($pending_invoices as $row): 
                                 $missing = [];
@@ -308,6 +274,17 @@ while($row = $res->fetch_assoc()) {
                                 <td data-order="<?php echo $row['id']; ?>">
                                     <span class="fw-bold text-dark fs-5">#<?php echo htmlspecialchars($row['invoice_no']); ?></span><br>
                                     <small class="text-muted fw-bold"><?php echo htmlspecialchars($row['party_name']); ?></small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">
+                                        <i class="fas fa-calendar-alt text-primary me-1"></i>
+                                        <?php echo !empty($row['date']) ? date('d M Y', strtotime($row['date'])) : '-'; ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="fw-bold text-success fs-6">
+                                        ₹<?php echo number_format($row['total_amount'] ?? 0, 2); ?>
+                                    </span>
                                 </td>
                                 <td>
                                     <div class="d-flex flex-wrap gap-2">
@@ -368,7 +345,14 @@ while($row = $res->fetch_assoc()) {
                 <div class="table-responsive">
                     <table id="completedTable" class="table table-hover align-middle mb-0 datatable" style="width:100%">
                         <thead class="bg-light">
-                            <tr><th>ID</th><th>Invoice Details</th><th>Type / Docs</th><th class="text-end">Actions</th></tr>
+                            <tr>
+                                <th>ID</th>
+                                <th>Invoice Details</th>
+                                <th>Date</th>
+                                <th>Amount (₹)</th>
+                                <th>Type / Docs</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
                         </thead>
                         <tbody>
                             <?php foreach($completed_invoices as $row): ?>
@@ -378,6 +362,17 @@ while($row = $res->fetch_assoc()) {
                                     <span class="fw-bold text-success">#<?php echo htmlspecialchars($row['invoice_no']); ?></span>
                                     <span class="text-muted mx-2">|</span>
                                     <?php echo htmlspecialchars($row['party_name']); ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">
+                                        <i class="fas fa-calendar-alt text-success me-1"></i>
+                                        <?php echo !empty($row['date']) ? date('d M Y', strtotime($row['date'])) : '-'; ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="fw-bold text-success fs-6">
+                                        ₹<?php echo number_format($row['total_amount'] ?? 0, 2); ?>
+                                    </span>
                                 </td>
                                 <td>
                                     <?php if($row['status'] == 'Closed'): ?>
@@ -417,7 +412,70 @@ while($row = $res->fetch_assoc()) {
 </form>
 
 <!-- =====================================================
-     NEW: DRAG-DROP UPLOAD MODAL
+     GENERATE INVOICE MODAL (Popup Form)
+     ===================================================== -->
+<div class="modal fade" id="generateInvoiceModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title">
+                    <i class="fas fa-plus-circle me-2"></i> Generate New Invoice
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form method="POST" id="generateInvoiceForm">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-muted">
+                            <i class="fas fa-hashtag text-primary me-1"></i> Invoice Number
+                        </label>
+                        <input type="text" name="invoice_no" class="form-control form-control-lg" required placeholder="e.g. FSD-1001" autocomplete="off">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-muted">
+                            <i class="fas fa-user text-primary me-1"></i> Select Client
+                        </label>
+                        <select name="party_id" class="form-select form-select-lg select2-modal" required style="width: 100%;">
+                            <option value="">Choose Client...</option>
+                            <?php 
+                            $c = $conn->query("SELECT * FROM clients ORDER BY party_name ASC");
+                            while($r=$c->fetch_assoc()) echo "<option value='{$r['id']}'>".htmlspecialchars($r['party_name'])."</option>";
+                            ?>
+                        </select>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold text-muted">
+                                <i class="fas fa-calendar text-primary me-1"></i> Invoice Date
+                            </label>
+                            <input type="date" name="invoice_date" class="form-control form-control-lg" value="<?= date('Y-m-d') ?>" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold text-muted">
+                                <i class="fas fa-rupee-sign text-primary me-1"></i> Total Amount
+                            </label>
+                            <div class="input-group input-group-lg">
+                                <span class="input-group-text bg-success text-white">₹</span>
+                                <input type="number" name="total_amount" class="form-control" step="0.01" min="0" placeholder="0.00" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr class="my-3">
+                    
+                    <button type="submit" name="create_inv" class="btn btn-primary btn-lg w-100 shadow">
+                        <i class="fas fa-check-circle me-2"></i> Create Invoice
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =====================================================
+     DRAG-DROP UPLOAD MODAL
      ===================================================== -->
 <div class="modal fade" id="uploadModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -546,7 +604,27 @@ function confirmDeleteFile(inv_id, col_name, file_path) {
 }
 
 // =====================================================
-// NEW: DRAG-DROP UPLOAD FUNCTIONS
+// GENERATE INVOICE MODAL FUNCTION
+// =====================================================
+
+// Open Generate Invoice Modal
+function openGenerateInvoiceModal() {
+    var modal = new bootstrap.Modal(document.getElementById('generateInvoiceModal'));
+    modal.show();
+    
+    // Initialize Select2 inside modal after it's shown
+    $('#generateInvoiceModal').on('shown.bs.modal', function () {
+        $('.select2-modal').select2({
+            theme: 'bootstrap-5',
+            placeholder: 'Choose Client...',
+            allowClear: true,
+            dropdownParent: $('#generateInvoiceModal')
+        });
+    });
+}
+
+// =====================================================
+// DRAG-DROP UPLOAD FUNCTIONS
 // =====================================================
 
 // Open upload modal with invoice ID
