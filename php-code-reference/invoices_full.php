@@ -107,21 +107,45 @@ if (isset($_POST['import_csv']) && !empty($_FILES['csv_file']['name'])) {
         while (($data = fgetcsv($handle, 0, $delimiter)) !== FALSE) {
             if (count($data) < 4) { $skipped++; continue; }
             
-            // Skip if this looks like a header row (check if first column is "Sr No" or similar)
+            // Skip if this looks like a header row
             $first_col = strtolower(trim($data[0]));
             if (in_array($first_col, ['sr no', 'sr', 'sno', 's.no', 'invoice no', 'invoice_no', 'invoiceno', '#', 'no', 'no.'])) {
-                continue; // Skip header-like rows
+                continue;
             }
             
-            // CSV format: SrNo, InvoiceNo, Date, PartyName, PartyPhone, AgentName, AgentPhone, TotalAmount, PaidAmount, Outstanding, Status, Remarks
-            $invoice_no = $conn->real_escape_string(trim($data[1])); // Column 1 = InvoiceNo
-            $invoice_date = date('Y-m-d', strtotime(trim($data[2]))); // Column 2 = Date
-            $party_name = $conn->real_escape_string(trim($data[3])); // Column 3 = PartyName
-            $party_phone = isset($data[4]) ? $conn->real_escape_string(trim($data[4])) : ''; // Column 4 = PartyPhone
-            $total_amount = isset($data[7]) ? floatval(str_replace(',', '', trim($data[7]))) : 0; // Column 7 = TotalAmount
-            $paid_amount = isset($data[8]) ? floatval(str_replace(',', '', trim($data[8]))) : 0; // Column 8 = PaidAmount
-            $status = isset($data[10]) ? $conn->real_escape_string(trim($data[10])) : 'Pending'; // Column 10 = Status
-            $remarks = isset($data[11]) ? $conn->real_escape_string(trim($data[11])) : ''; // Column 11 = Remarks
+            // FLEXIBLE CSV FORMAT DETECTION based on column count
+            // Format A (5 cols): InvoiceNo, Date, PartyName, TotalAmount, Remarks
+            // Format B (12 cols): SrNo, InvoiceNo, Date, PartyName, PartyPhone, AgentName, AgentPhone, TotalAmount, PaidAmount, Outstanding, Status, Remarks
+            
+            if (count($data) >= 10) {
+                // Full export format (12 columns)
+                $invoice_no = $conn->real_escape_string(trim($data[1]));
+                $invoice_date_raw = trim($data[2]);
+                $party_name = $conn->real_escape_string(trim($data[3]));
+                $party_phone = $conn->real_escape_string(trim($data[4]));
+                $total_amount = floatval(str_replace(',', '', trim($data[7])));
+                $paid_amount = floatval(str_replace(',', '', trim($data[8])));
+                $status = $conn->real_escape_string(trim($data[10]));
+                $remarks = isset($data[11]) ? $conn->real_escape_string(trim($data[11])) : '';
+            } else {
+                // Simple format (5 columns): InvoiceNo, Date, PartyName, TotalAmount, Remarks
+                $invoice_no = $conn->real_escape_string(trim($data[0]));
+                $invoice_date_raw = trim($data[1]);
+                $party_name = $conn->real_escape_string(trim($data[2]));
+                $party_phone = '';
+                $total_amount = floatval(str_replace(',', '', trim($data[3])));
+                $paid_amount = 0;
+                $status = 'Pending';
+                $remarks = isset($data[4]) ? $conn->real_escape_string(trim($data[4])) : '';
+            }
+            
+            // Parse date - handle DD/MM/YYYY format
+            $invoice_date = '1970-01-01';
+            if (preg_match('/(\d{1,2})\/(\d{1,2})\/(\d{4})/', $invoice_date_raw, $m)) {
+                $invoice_date = $m[3] . '-' . str_pad($m[2], 2, '0', STR_PAD_LEFT) . '-' . str_pad($m[1], 2, '0', STR_PAD_LEFT);
+            } elseif (strtotime($invoice_date_raw)) {
+                $invoice_date = date('Y-m-d', strtotime($invoice_date_raw));
+            }
             
             // Find or create party
             $party_check = $conn->query("SELECT id FROM clients WHERE party_name = '$party_name'");
