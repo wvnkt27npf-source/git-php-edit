@@ -7,10 +7,10 @@
 include 'db.php';
 include 'header.php';
 
-// Get UltraMsg settings
+// Get UltraMsg settings from database
 $settings = $conn->query("SELECT * FROM settings LIMIT 1")->fetch_assoc();
-$ultramsg_token = $settings['ultramsg_token'] ?? '';
-$ultramsg_instance = $settings['ultramsg_instance'] ?? '';
+$ultramsg_token = $settings['wa_token'] ?? '';
+$ultramsg_instance = $settings['wa_instance_id'] ?? '';
 
 // UltraMsg Send Function (with PDF support)
 function sendUltraMsgWithDoc($to, $message, $file_url, $token, $instance) {
@@ -47,8 +47,7 @@ if (isset($_POST['send_whatsapp'])) {
     $inv = $conn->query("SELECT i.*, c.party_name FROM invoices i JOIN clients c ON i.party_id = c.id WHERE i.id = $inv_id")->fetch_assoc();
     
     if ($inv) {
-        $inv_amount = $inv['total_amount'] ?? $inv['amount'] ?? $inv['grand_total'] ?? $inv['net_amount'] ?? 0;
-        $message = "Outstanding Invoice: #" . $inv['invoice_no'] . "\nParty: " . $inv['party_name'] . "\nAmount: Rs. " . number_format(floatval($inv_amount), 2);
+        $message = "Outstanding Invoice: #" . $inv['invoice_no'] . "\nParty: " . $inv['party_name'];
         
         // Send PDF if exists
         $file_url = '';
@@ -66,33 +65,7 @@ if (isset($_POST['send_whatsapp'])) {
     }
 }
 
-// Handle Bulk Send to Agent
-if (isset($_POST['bulk_send_agent'])) {
-    $agent_phone = $_POST['agent_phone'];
-    $invoice_ids = $_POST['invoice_ids'] ?? [];
-    
-    $success_count = 0;
-    foreach ($invoice_ids as $inv_id) {
-        $inv = $conn->query("SELECT i.*, c.party_name FROM invoices i JOIN clients c ON i.party_id = c.id WHERE i.id = " . intval($inv_id))->fetch_assoc();
-        
-        if ($inv && !empty($inv['invoice_path'])) {
-            $inv_amount = $inv['total_amount'] ?? $inv['amount'] ?? $inv['grand_total'] ?? $inv['net_amount'] ?? 0;
-            $message = "Outstanding: #" . $inv['invoice_no'] . " - " . $inv['party_name'] . " - Rs." . number_format(floatval($inv_amount), 2);
-            $file_url = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $inv['invoice_path'];
-            
-            $result = sendUltraMsgWithDoc($agent_phone, $message, $file_url, $ultramsg_token, $ultramsg_instance);
-            if (isset($result['sent']) && $result['sent'] == 'true') {
-                $success_count++;
-            }
-            usleep(500000); // 0.5 second delay between messages
-        }
-    }
-    
-    $alert_script = "<script>Swal.fire('Done!', '$success_count invoices sent to Agent', 'success');</script>";
-}
-
 // Get Outstanding Invoices with Agent info
-// NOTE: Change 'amount' to your actual column name if different (e.g., total_amount, grand_total, net_amount)
 $query = "SELECT i.*, c.party_name, c.phone as party_phone, 
                  c.agent_name, c.agent_phone
           FROM invoices i
@@ -103,17 +76,9 @@ $result = $conn->query($query);
 
 // Group by Agent
 $by_agent = [];
-$totals_by_agent = [];
 while ($row = $result->fetch_assoc()) {
     $agent = !empty($row['agent_name']) ? $row['agent_name'] : 'DIRECT';
     $by_agent[$agent][] = $row;
-    
-    if (!isset($totals_by_agent[$agent])) {
-        $totals_by_agent[$agent] = 0;
-    }
-    // Use null-safe access - try common column names
-    $amount = $row['total_amount'] ?? $row['amount'] ?? $row['grand_total'] ?? $row['net_amount'] ?? 0;
-    $totals_by_agent[$agent] += floatval($amount);
 }
 ?>
 
@@ -137,9 +102,6 @@ while ($row = $result->fetch_assoc()) {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
         }
         .agent-header.direct {
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
@@ -156,12 +118,6 @@ while ($row = $result->fetch_assoc()) {
         .btn-whatsapp:hover {
             background: #128C7E;
             color: white;
-        }
-        .total-badge {
-            font-size: 14px;
-            background: rgba(255,255,255,0.2);
-            padding: 5px 15px;
-            border-radius: 20px;
         }
     </style>
 </head>
@@ -183,40 +139,17 @@ while ($row = $result->fetch_assoc()) {
         <?php foreach ($by_agent as $agent => $invoices): ?>
             <?php 
             $is_direct = ($agent == 'DIRECT');
-            $agent_phone = $is_direct ? '' : $invoices[0]['agent_phone'];
-            $total = $totals_by_agent[$agent];
             ?>
             
             <div class="agent-section">
                 <div class="agent-header <?= $is_direct ? 'direct' : '' ?>">
-                    <div>
-                        <h5 class="mb-0">
-                            <?php if ($is_direct): ?>
-                                <i class="fas fa-user"></i> DIRECT PARTIES
-                            <?php else: ?>
-                                <i class="fas fa-user-tie"></i> Agent: <?= htmlspecialchars($agent) ?>
-                                <small class="ms-2">(<?= htmlspecialchars($agent_phone) ?>)</small>
-                            <?php endif; ?>
-                        </h5>
-                    </div>
-                    <div class="d-flex align-items-center gap-3">
-                        <span class="total-badge">
-                            Total: ₹<?= number_format($total, 2) ?>
-                        </span>
-                        <?php if (!$is_direct && !empty($agent_phone)): ?>
-                            <form method="POST" class="d-inline bulk-form">
-                                <input type="hidden" name="bulk_send_agent" value="1">
-                                <input type="hidden" name="agent_phone" value="<?= htmlspecialchars($agent_phone) ?>">
-                                <?php foreach ($invoices as $inv): ?>
-                                    <input type="hidden" name="invoice_ids[]" value="<?= $inv['id'] ?>">
-                                <?php endforeach; ?>
-                                <button type="submit" class="btn btn-whatsapp btn-sm" 
-                                        onclick="return confirm('Send all <?= count($invoices) ?> invoices to Agent?')">
-                                    <i class="fab fa-whatsapp"></i> Send All to Agent
-                                </button>
-                            </form>
+                    <h5 class="mb-0">
+                        <?php if ($is_direct): ?>
+                            <i class="fas fa-user"></i> DIRECT PARTIES
+                        <?php else: ?>
+                            <i class="fas fa-user-tie"></i> Agent: <?= htmlspecialchars($agent) ?>
                         <?php endif; ?>
-                    </div>
+                    </h5>
                 </div>
                 
                 <div class="table-responsive">
@@ -226,7 +159,6 @@ while ($row = $result->fetch_assoc()) {
                                 <th>Invoice #</th>
                                 <th>Date</th>
                                 <th>Party</th>
-                                <th>Amount</th>
                                 <th>Documents</th>
                                 <th>Status</th>
                                 <th>Action</th>
@@ -253,10 +185,6 @@ while ($row = $result->fetch_assoc()) {
                                         <?= htmlspecialchars($inv['party_name']) ?>
                                         <br><small class="text-muted"><?= htmlspecialchars($inv['party_phone']) ?></small>
                                     </td>
-                                    <?php 
-                                    $inv_amount = $inv['total_amount'] ?? $inv['amount'] ?? $inv['grand_total'] ?? $inv['net_amount'] ?? 0;
-                                    ?>
-                                    <td><strong>₹<?= number_format(floatval($inv_amount), 2) ?></strong></td>
                                     <td>
                                         <?php if (!empty($inv['invoice_path'])): ?>
                                             <span class="badge bg-success badge-doc">INV</span>
