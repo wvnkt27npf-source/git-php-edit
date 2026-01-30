@@ -47,7 +47,8 @@ if (isset($_POST['send_whatsapp'])) {
     $inv = $conn->query("SELECT i.*, c.party_name FROM invoices i JOIN clients c ON i.party_id = c.id WHERE i.id = $inv_id")->fetch_assoc();
     
     if ($inv) {
-        $message = "Outstanding Invoice: #" . $inv['invoice_no'] . "\nParty: " . $inv['party_name'] . "\nAmount: Rs. " . number_format($inv['total_amount'], 2);
+        $inv_amount = $inv['total_amount'] ?? $inv['amount'] ?? $inv['grand_total'] ?? $inv['net_amount'] ?? 0;
+        $message = "Outstanding Invoice: #" . $inv['invoice_no'] . "\nParty: " . $inv['party_name'] . "\nAmount: Rs. " . number_format(floatval($inv_amount), 2);
         
         // Send PDF if exists
         $file_url = '';
@@ -75,7 +76,8 @@ if (isset($_POST['bulk_send_agent'])) {
         $inv = $conn->query("SELECT i.*, c.party_name FROM invoices i JOIN clients c ON i.party_id = c.id WHERE i.id = " . intval($inv_id))->fetch_assoc();
         
         if ($inv && !empty($inv['invoice_path'])) {
-            $message = "Outstanding: #" . $inv['invoice_no'] . " - " . $inv['party_name'] . " - Rs." . number_format($inv['total_amount'], 2);
+            $inv_amount = $inv['total_amount'] ?? $inv['amount'] ?? $inv['grand_total'] ?? $inv['net_amount'] ?? 0;
+            $message = "Outstanding: #" . $inv['invoice_no'] . " - " . $inv['party_name'] . " - Rs." . number_format(floatval($inv_amount), 2);
             $file_url = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $inv['invoice_path'];
             
             $result = sendUltraMsgWithDoc($agent_phone, $message, $file_url, $ultramsg_token, $ultramsg_instance);
@@ -90,6 +92,7 @@ if (isset($_POST['bulk_send_agent'])) {
 }
 
 // Get Outstanding Invoices with Agent info
+// NOTE: Change 'amount' to your actual column name if different (e.g., total_amount, grand_total, net_amount)
 $query = "SELECT i.*, c.party_name, c.phone as party_phone, 
                  c.agent_name, c.agent_phone
           FROM invoices i
@@ -108,7 +111,9 @@ while ($row = $result->fetch_assoc()) {
     if (!isset($totals_by_agent[$agent])) {
         $totals_by_agent[$agent] = 0;
     }
-    $totals_by_agent[$agent] += $row['total_amount'];
+    // Use null-safe access - try common column names
+    $amount = $row['total_amount'] ?? $row['amount'] ?? $row['grand_total'] ?? $row['net_amount'] ?? 0;
+    $totals_by_agent[$agent] += floatval($amount);
 }
 ?>
 
@@ -248,7 +253,10 @@ while ($row = $result->fetch_assoc()) {
                                         <?= htmlspecialchars($inv['party_name']) ?>
                                         <br><small class="text-muted"><?= htmlspecialchars($inv['party_phone']) ?></small>
                                     </td>
-                                    <td><strong>₹<?= number_format($inv['total_amount'], 2) ?></strong></td>
+                                    <?php 
+                                    $inv_amount = $inv['total_amount'] ?? $inv['amount'] ?? $inv['grand_total'] ?? $inv['net_amount'] ?? 0;
+                                    ?>
+                                    <td><strong>₹<?= number_format(floatval($inv_amount), 2) ?></strong></td>
                                     <td>
                                         <?php if (!empty($inv['invoice_path'])): ?>
                                             <span class="badge bg-success badge-doc">INV</span>
