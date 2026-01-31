@@ -155,47 +155,29 @@ function buildReminderMessage($party_name, $bills, $total_bill, $outstanding, $c
     $message = "";
     
     if ($is_agent) {
-        // Agent Message
-        $message .= "🔔 *PAYMENT COLLECTION REMINDER*\n";
-        $message .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
-        $message .= "Dear *$agent_name* Ji,\n\n";
-        $message .= "Namaskar! 🙏\n\n";
-        $message .= "Aapke through humari kuch pending payments hain:\n\n";
-        $message .= "📋 *Outstanding Parties:*\n";
+        // Agent Message - Clean & Professional
+        $message .= "Namaskar *$agent_name* Ji 🙏\n\n";
+        $message .= "Pending collection ke liye reminder:\n\n";
         $message .= "$parties_list\n";
-        $message .= "━━━━━━━━━━━━━━━━━━━━━\n";
-        $message .= "💰 *Total Collection Due: ₹" . number_format($outstanding, 2) . "*\n";
-        $message .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
-        $message .= "Kripya jaldi se jaldi collection karwa dein.\n";
-        $message .= "Dhanyawad! 🙏\n\n";
+        $message .= "*Total Due: ₹" . number_format($outstanding, 0) . "*\n\n";
+        $message .= "Kripya collection karwa dein.\n\n";
     } else {
-        // Party Message
-        $message .= "🔔 *PAYMENT REMINDER*\n";
-        $message .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
-        $message .= "Dear *$party_name* Ji,\n\n";
-        $message .= "Namaskar! 🙏\n\n";
-        $message .= "Humari records ke anusar aapki kuch pending payments hain:\n\n";
-        $message .= "📋 *Outstanding Bills:*\n";
+        // Party Message - Clean & Professional
+        $message .= "Namaskar *$party_name* Ji 🙏\n\n";
+        $message .= "Aapke pending bills:\n\n";
         $message .= "$bills\n";
-        $message .= "━━━━━━━━━━━━━━━━━━━━━\n";
-        $message .= "💵 *Total Bill: ₹" . number_format($total_bill, 2) . "*\n";
-        $message .= "💰 *Outstanding: ₹" . number_format($outstanding, 2) . "*\n";
-        $message .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
-        $message .= "Kripya apni suvidha anusar payment karein.\n";
-        $message .= "Dhanyawad! 🙏\n\n";
+        $message .= "*Outstanding: ₹" . number_format($outstanding, 0) . "*\n\n";
+        $message .= "Kripya payment karein.\n\n";
     }
     
-    // Signature
-    $message .= "━━━━━━━━━━━━━━━━━━━━━\n";
-    $message .= "📞 *From:*\n";
-    $message .= "*$company_name*\n";
-    if (!empty($sender_name)) {
-        $message .= "$sender_name\n";
+    // Clean Signature
+    $message .= "— *$company_name*";
+    if (!empty($sender_name) && $sender_name != $company_name) {
+        $message .= "\n$sender_name";
     }
     if (!empty($company_phone)) {
-        $message .= "📱 $company_phone\n";
+        $message .= "\n📞 $company_phone";
     }
-    $message .= "━━━━━━━━━━━━━━━━━━━━━\n";
     
     return $message;
 }
@@ -1170,6 +1152,12 @@ foreach ($outstanding_invoices as $inv) {
 
                     <!-- DIRECT PARTIES TAB -->
                     <div class="tab-pane fade" id="direct-parties" role="tabpanel">
+                        <?php 
+                        // Define wa_sort for Direct Parties tab (fix undefined variable)
+                        $wa_search = strtolower($_GET['wa_search'] ?? '');
+                        $wa_status = $_GET['wa_status'] ?? 'all';
+                        $wa_sort = $_GET['wa_sort'] ?? 'outstanding_desc';
+                        ?>
                         <?php if (count($party_direct) > 0): ?>
                             <div class="card">
                                 <div class="card-header" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
@@ -1406,12 +1394,12 @@ foreach ($outstanding_invoices as $inv) {
         </div>
     </div>
 
-    <!-- WhatsApp Preview Modal -->
+    <!-- WhatsApp Preview Modal - Professional Design -->
     <div class="modal fade" id="whatsappPreviewModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
                 <form method="POST" id="waPreviewForm">
-                    <!-- Hidden fields will be populated by JS -->
+                    <!-- Hidden fields -->
                     <input type="hidden" name="send_reminder" id="wa_send_type" value="1">
                     <input type="hidden" name="client_id" id="wa_client_id">
                     <input type="hidden" name="send_to" id="wa_send_to">
@@ -1425,58 +1413,56 @@ foreach ($outstanding_invoices as $inv) {
                     <input type="hidden" name="parties_list" id="wa_parties_list">
                     <input type="hidden" name="client_ids" id="wa_client_ids">
                     
-                    <div class="modal-header" style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); color: white;">
-                        <h5 class="modal-title">
-                            <i class="fab fa-whatsapp fa-lg me-2"></i> 
-                            WhatsApp Message Preview
-                        </h5>
+                    <div class="modal-header border-0 py-3" style="background: #075E54;">
+                        <div class="d-flex align-items-center">
+                            <div class="rounded-circle bg-white bg-opacity-25 d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+                                <i class="fab fa-whatsapp text-white fa-lg"></i>
+                            </div>
+                            <div class="text-white">
+                                <h6 class="mb-0 fw-semibold" id="wa_display_name">Recipient</h6>
+                                <small class="opacity-75" id="wa_display_phone">+91 XXXXXXXXXX</small>
+                            </div>
+                        </div>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     
-                    <div class="modal-body">
-                        <!-- Recipient Info -->
-                        <div class="alert alert-info mb-3">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong><i class="fas fa-user"></i> <span id="wa_display_name"></span></strong>
-                                    <br>
-                                    <small class="text-muted">
-                                        <i class="fas fa-phone"></i> <span id="wa_display_phone"></span>
+                    <div class="modal-body p-0" style="background: #ECE5DD url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEWFhYWDg4N3d3dtbW17e3t1dXWBgYGHh4d5eXlzc3Oeli3ecCbn5teleadings...');">
+                        <!-- Amount Badge -->
+                        <div class="px-3 py-2">
+                            <span class="badge rounded-pill px-3 py-2" style="background: #DCF8C6; color: #075E54; font-size: 14px;">
+                                <i class="fas fa-rupee-sign me-1"></i>
+                                <span id="wa_display_amount">₹0</span> Outstanding
+                            </span>
+                        </div>
+                        
+                        <!-- Message Bubble -->
+                        <div class="px-3 pb-3">
+                            <div class="position-relative" style="background: #DCF8C6; border-radius: 0 12px 12px 12px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+                                <textarea 
+                                    name="custom_message" 
+                                    id="wa_message_textarea" 
+                                    class="form-control border-0 p-0" 
+                                    rows="10" 
+                                    style="background: transparent; resize: none; font-size: 14px; line-height: 1.6;"
+                                ></textarea>
+                                <div class="text-end mt-2">
+                                    <small class="text-muted" style="font-size: 11px;">
+                                        <span id="charCount">0</span> chars
                                     </small>
-                                </div>
-                                <div class="text-end">
-                                    <span class="badge bg-danger fs-6" id="wa_display_amount"></span>
                                 </div>
                             </div>
                         </div>
-                        
-                        <!-- Message Preview -->
-                        <div class="mb-3">
-                            <label class="form-label d-flex justify-content-between align-items-center">
-                                <strong><i class="fas fa-edit"></i> Message (editable)</strong>
-                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetMessage()">
-                                    <i class="fas fa-undo"></i> Reset
-                                </button>
-                            </label>
-                            <textarea 
-                                name="custom_message" 
-                                id="wa_message_textarea" 
-                                class="form-control" 
-                                rows="15" 
-                                style="font-family: monospace; font-size: 13px; line-height: 1.5; background: #DCF8C6; border: 2px solid #25D366;"
-                            ></textarea>
-                            <small class="text-muted">
-                                <i class="fas fa-info-circle"></i> You can edit the message above before sending. Click "Reset" to restore original.
-                            </small>
-                        </div>
                     </div>
                     
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                            <i class="fas fa-times"></i> Cancel
+                    <div class="modal-footer border-0 bg-white py-3 gap-2">
+                        <button type="button" class="btn btn-outline-secondary rounded-pill px-4" onclick="resetMessage()">
+                            <i class="fas fa-undo me-1"></i> Reset
                         </button>
-                        <button type="submit" class="btn btn-success btn-lg">
-                            <i class="fab fa-whatsapp"></i> Confirm & Send
+                        <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn rounded-pill px-4 fw-semibold" style="background: #25D366; color: white;">
+                            <i class="fab fa-whatsapp me-1"></i> Send Message
                         </button>
                     </div>
                 </form>
@@ -1489,6 +1475,15 @@ foreach ($outstanding_invoices as $inv) {
     // Store original message for reset
     let originalMessage = '';
     
+    // Update character count
+    function updateCharCount() {
+        const textarea = document.getElementById('wa_message_textarea');
+        const count = document.getElementById('charCount');
+        if (textarea && count) {
+            count.textContent = textarea.value.length;
+        }
+    }
+    
     function openWhatsAppPreview(type, clientId, phone, name, totalAmount, outstandingAmount, billsOrParties, previewMessage) {
         // Store original message
         originalMessage = previewMessage;
@@ -1499,7 +1494,7 @@ foreach ($outstanding_invoices as $inv) {
             document.getElementById('wa_agent_phone').value = phone;
             document.getElementById('wa_agent_name').value = name;
             document.getElementById('wa_parties_list').value = billsOrParties;
-            document.getElementById('wa_client_ids').value = clientId; // comma-separated for agents
+            document.getElementById('wa_client_ids').value = clientId;
             document.getElementById('wa_total_amount').value = totalAmount;
         } else {
             document.getElementById('wa_send_type').name = 'send_reminder';
@@ -1514,11 +1509,13 @@ foreach ($outstanding_invoices as $inv) {
         
         // Display info
         document.getElementById('wa_display_name').textContent = (type === 'agent' ? 'Agent: ' : '') + name;
-        document.getElementById('wa_display_phone').textContent = phone;
-        document.getElementById('wa_display_amount').textContent = '₹' + parseFloat(outstandingAmount).toLocaleString('en-IN', {minimumFractionDigits: 2}) + ' Outstanding';
+        document.getElementById('wa_display_phone').textContent = '+91 ' + phone.replace(/^91/, '');
+        document.getElementById('wa_display_amount').textContent = '₹' + parseFloat(outstandingAmount).toLocaleString('en-IN', {maximumFractionDigits: 0});
         
         // Set message in textarea
-        document.getElementById('wa_message_textarea').value = previewMessage;
+        const textarea = document.getElementById('wa_message_textarea');
+        textarea.value = previewMessage;
+        updateCharCount();
         
         // Show modal
         new bootstrap.Modal(document.getElementById('whatsappPreviewModal')).show();
@@ -1526,7 +1523,11 @@ foreach ($outstanding_invoices as $inv) {
     
     function resetMessage() {
         document.getElementById('wa_message_textarea').value = originalMessage;
+        updateCharCount();
     }
+    
+    // Attach char count listener
+    document.getElementById('wa_message_textarea')?.addEventListener('input', updateCharCount);
     
     function openMarkPaymentModal(invoiceId, invoiceNo, partyName, billAmount, paidAmount, outstanding) {
         document.getElementById('mp_invoice_id').value = invoiceId;
