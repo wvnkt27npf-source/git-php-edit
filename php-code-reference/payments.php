@@ -1475,6 +1475,24 @@ foreach ($outstanding_invoices as $inv) {
     // Store original message for reset
     let originalMessage = '';
     
+    // Parse number that may have commas or currency symbols
+    function parseLocalizedNumber(value) {
+        if (!value || value === "") return 0;
+        let str = String(value).trim();
+        // Remove currency symbols, spaces, ₹
+        str = str.replace(/[₹$\u20AC£¥\s]/g, "");
+        // Remove all commas (Indian/International format)
+        str = str.replace(/,/g, "");
+        const parsed = parseFloat(str);
+        return isNaN(parsed) ? 0 : parsed;
+    }
+    
+    // Format number in Indian format
+    function formatIndianNumber(num) {
+        num = parseLocalizedNumber(num);
+        return num.toLocaleString('en-IN', {maximumFractionDigits: 0});
+    }
+    
     // Update character count
     function updateCharCount() {
         const textarea = document.getElementById('wa_message_textarea');
@@ -1488,6 +1506,10 @@ foreach ($outstanding_invoices as $inv) {
         // Store original message
         originalMessage = previewMessage;
         
+        // Parse amounts properly
+        const parsedTotal = parseLocalizedNumber(totalAmount);
+        const parsedOutstanding = parseLocalizedNumber(outstandingAmount);
+        
         // Set form fields based on type
         if (type === 'agent') {
             document.getElementById('wa_send_type').name = 'send_agent_reminder';
@@ -1495,14 +1517,14 @@ foreach ($outstanding_invoices as $inv) {
             document.getElementById('wa_agent_name').value = name;
             document.getElementById('wa_parties_list').value = billsOrParties;
             document.getElementById('wa_client_ids').value = clientId;
-            document.getElementById('wa_total_amount').value = totalAmount;
+            document.getElementById('wa_total_amount').value = parsedTotal;
         } else {
             document.getElementById('wa_send_type').name = 'send_reminder';
             document.getElementById('wa_client_id').value = clientId;
             document.getElementById('wa_send_to').value = phone;
             document.getElementById('wa_party_name').value = name;
-            document.getElementById('wa_total_amount').value = totalAmount;
-            document.getElementById('wa_outstanding_amount').value = outstandingAmount;
+            document.getElementById('wa_total_amount').value = parsedTotal;
+            document.getElementById('wa_outstanding_amount').value = parsedOutstanding;
             document.getElementById('wa_bills').value = billsOrParties;
             document.getElementById('wa_recipient_type').value = 'Party';
         }
@@ -1510,7 +1532,7 @@ foreach ($outstanding_invoices as $inv) {
         // Display info
         document.getElementById('wa_display_name').textContent = (type === 'agent' ? 'Agent: ' : '') + name;
         document.getElementById('wa_display_phone').textContent = '+91 ' + phone.replace(/^91/, '');
-        document.getElementById('wa_display_amount').textContent = '₹' + parseFloat(outstandingAmount).toLocaleString('en-IN', {maximumFractionDigits: 0});
+        document.getElementById('wa_display_amount').textContent = '₹' + formatIndianNumber(parsedOutstanding);
         
         // Set message in textarea
         const textarea = document.getElementById('wa_message_textarea');
