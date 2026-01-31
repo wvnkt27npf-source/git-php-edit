@@ -896,158 +896,382 @@ foreach ($outstanding_invoices as $inv) {
                 </div>
             </div>
 
-            <!-- TAB 4: WhatsApp Reminders -->
+            <!-- TAB 4: WhatsApp Reminders - UPGRADED WITH TABLES, SORTING, FILTERING -->
             <div class="tab-pane fade" id="whatsapp" role="tabpanel">
-                <!-- Legend -->
+                <!-- Legend & Info -->
                 <div class="alert alert-info mb-4">
-                    <i class="fas fa-info-circle"></i> 
-                    <strong>Auto-Tracking:</strong> 
-                    <span class="badge badge-sent me-1">✓ Sent</span> = Message already sent (no new invoices)
-                    <span class="badge badge-pending ms-2">⏳ Pending</span> = Message pending or new invoice added
+                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                        <div>
+                            <i class="fas fa-info-circle"></i> 
+                            <strong>Auto-Tracking:</strong> 
+                            <span class="badge badge-sent me-1">✓ Sent</span> = Message sent
+                            <span class="badge badge-pending ms-2">⏳ Pending</span> = Pending or new invoice added
+                        </div>
+                        <div class="mt-2 mt-md-0">
+                            <strong>Logic:</strong> Agent ho to Agent ko, DIRECT ho to Party ko
+                        </div>
+                    </div>
                 </div>
-                
-                <div class="row">
-                    <!-- Agent-wise Reminders -->
-                    <div class="col-md-6">
-                        <h5 class="mb-3"><i class="fas fa-user-tie text-primary"></i> Agent-wise Reminders</h5>
+
+                <!-- Search & Filter Bar for WhatsApp Tab -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <form method="GET" class="row g-3 align-items-end" id="waFilterForm">
+                            <input type="hidden" name="tab" value="whatsapp">
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Search Party / Invoice / Agent</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                    <input type="text" name="wa_search" id="wa_search" class="form-control" 
+                                           placeholder="Party name, Invoice no, Phone..." 
+                                           value="<?php echo htmlspecialchars($_GET['wa_search'] ?? ''); ?>">
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small text-muted">Status</label>
+                                <select name="wa_status" id="wa_status" class="form-select">
+                                    <option value="all" <?php echo (($_GET['wa_status'] ?? 'all') == 'all') ? 'selected' : ''; ?>>All Status</option>
+                                    <option value="pending" <?php echo (($_GET['wa_status'] ?? '') == 'pending') ? 'selected' : ''; ?>>Pending Only</option>
+                                    <option value="sent" <?php echo (($_GET['wa_status'] ?? '') == 'sent') ? 'selected' : ''; ?>>Sent Only</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small text-muted">Sort By</label>
+                                <select name="wa_sort" id="wa_sort" class="form-select">
+                                    <option value="outstanding_desc" <?php echo (($_GET['wa_sort'] ?? 'outstanding_desc') == 'outstanding_desc') ? 'selected' : ''; ?>>Outstanding ↓</option>
+                                    <option value="outstanding_asc" <?php echo (($_GET['wa_sort'] ?? '') == 'outstanding_asc') ? 'selected' : ''; ?>>Outstanding ↑</option>
+                                    <option value="party_asc" <?php echo (($_GET['wa_sort'] ?? '') == 'party_asc') ? 'selected' : ''; ?>>Party A-Z</option>
+                                    <option value="party_desc" <?php echo (($_GET['wa_sort'] ?? '') == 'party_desc') ? 'selected' : ''; ?>>Party Z-A</option>
+                                    <option value="date_desc" <?php echo (($_GET['wa_sort'] ?? '') == 'date_desc') ? 'selected' : ''; ?>>Date (Newest)</option>
+                                    <option value="date_asc" <?php echo (($_GET['wa_sort'] ?? '') == 'date_asc') ? 'selected' : ''; ?>>Date (Oldest)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="fas fa-filter"></i> Apply
+                                </button>
+                            </div>
+                            <div class="col-md-2">
+                                <a href="payments.php?tab=whatsapp" class="btn btn-outline-secondary w-100">
+                                    <i class="fas fa-times"></i> Clear
+                                </a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- WhatsApp Sub-Tabs: Agent vs Direct -->
+                <ul class="nav nav-pills mb-4" id="waSubTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="agent-tab" data-bs-toggle="pill" data-bs-target="#agent-parties" type="button">
+                            <i class="fas fa-user-tie"></i> Agent Parties 
+                            <span class="badge bg-primary ms-1"><?php echo count($agent_grouped); ?></span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="direct-tab" data-bs-toggle="pill" data-bs-target="#direct-parties" type="button">
+                            <i class="fas fa-building"></i> Direct Parties
+                            <span class="badge bg-warning text-dark ms-1"><?php echo count($party_direct); ?></span>
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="waSubTabContent">
+                    <!-- AGENT PARTIES TAB -->
+                    <div class="tab-pane fade show active" id="agent-parties" role="tabpanel">
                         <?php if (count($agent_grouped) > 0): ?>
-                            <?php foreach ($agent_grouped as $agent): ?>
+                            <?php 
+                            // Apply search & sort filters to agent_grouped
+                            $wa_search = strtolower($_GET['wa_search'] ?? '');
+                            $wa_status = $_GET['wa_status'] ?? 'all';
+                            $wa_sort = $_GET['wa_sort'] ?? 'outstanding_desc';
+                            
+                            // Convert to array for sorting
+                            $agent_array = array_values($agent_grouped);
+                            
+                            // Sort agents
+                            usort($agent_array, function($a, $b) use ($wa_sort) {
+                                switch ($wa_sort) {
+                                    case 'outstanding_asc': return $a['total_outstanding'] - $b['total_outstanding'];
+                                    case 'outstanding_desc': return $b['total_outstanding'] - $a['total_outstanding'];
+                                    case 'party_asc': return strcasecmp($a['agent_name'], $b['agent_name']);
+                                    case 'party_desc': return strcasecmp($b['agent_name'], $a['agent_name']);
+                                    default: return $b['total_outstanding'] - $a['total_outstanding'];
+                                }
+                            });
+                            ?>
+                            
+                            <?php foreach ($agent_array as $agent): ?>
                                 <?php
-                                    // Check if reminder already sent for first client
+                                    // Search filter
+                                    if (!empty($wa_search)) {
+                                        $match = false;
+                                        if (stripos($agent['agent_name'], $wa_search) !== false || 
+                                            stripos($agent['agent_phone'], $wa_search) !== false) {
+                                            $match = true;
+                                        }
+                                        foreach ($agent['invoices'] as $inv) {
+                                            if (stripos($inv['party_name'], $wa_search) !== false || 
+                                                stripos($inv['invoice_no'], $wa_search) !== false) {
+                                                $match = true;
+                                                break;
+                                            }
+                                        }
+                                        if (!$match) continue;
+                                    }
+                                    
+                                    // Check if reminder already sent
                                     $first_client_id = $agent['client_ids'][0] ?? 0;
                                     $is_sent = isReminderSent($conn, $first_client_id, 'Agent');
+                                    
+                                    // Status filter
+                                    if ($wa_status == 'pending' && $is_sent) continue;
+                                    if ($wa_status == 'sent' && !$is_sent) continue;
+                                    
+                                    // Build parties list
+                                    $parties_list = '';
+                                    $unique_parties = [];
+                                    foreach ($agent['invoices'] as $i) {
+                                        if (!in_array($i['party_name'], $unique_parties)) {
+                                            $unique_parties[] = $i['party_name'];
+                                        }
+                                    }
+                                    foreach ($unique_parties as $pname) {
+                                        $party_outstanding = 0;
+                                        foreach ($agent['invoices'] as $i) {
+                                            if ($i['party_name'] == $pname) {
+                                                $party_outstanding += $i['outstanding'];
+                                            }
+                                        }
+                                        $parties_list .= "• $pname - ₹" . number_format($party_outstanding, 2) . "\n";
+                                    }
                                 ?>
-                                <div class="whatsapp-card card <?php echo $is_sent ? 'sent' : ''; ?>">
-                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                
+                                <div class="card mb-3 <?php echo $is_sent ? 'border-success' : 'border-warning'; ?>">
+                                    <div class="card-header d-flex justify-content-between align-items-center" 
+                                         style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
                                         <div>
-                                            <strong><?php echo htmlspecialchars($agent['agent_name']); ?></strong>
+                                            <i class="fas fa-user-tie"></i>
+                                            <strong class="ms-2"><?php echo htmlspecialchars($agent['agent_name']); ?></strong>
                                             <?php if ($is_sent): ?>
-                                                <span class="badge badge-sent ms-2">✓ Sent</span>
+                                                <span class="badge bg-success ms-2">✓ Sent</span>
                                             <?php else: ?>
-                                                <span class="badge badge-pending ms-2">⏳ Pending</span>
+                                                <span class="badge bg-warning text-dark ms-2">⏳ Pending</span>
                                             <?php endif; ?>
-                                            <br><small><i class="fas fa-phone"></i> <?php echo $agent['agent_phone']; ?></small>
                                         </div>
                                         <div class="text-end">
-                                            <span class="badge bg-light text-dark">
-                                                <?php echo count($agent['invoices']); ?> bills
-                                            </span>
+                                            <span class="badge bg-white text-dark"><?php echo count($agent['invoices']); ?> Bills</span>
+                                            <span class="badge bg-danger ms-1">₹<?php echo number_format($agent['total_outstanding'], 0); ?> Due</span>
                                         </div>
                                     </div>
-                                    <div class="card-body">
-                                        <p class="mb-2">
-                                            <strong>Total Bill:</strong> ₹<?php echo number_format($agent['total_bill'], 2); ?><br>
-                                            <strong class="text-danger">Outstanding:</strong> ₹<?php echo number_format($agent['total_outstanding'], 2); ?>
-                                        </p>
-                                        <?php if ($is_sent): ?>
-                                            <small class="text-muted">
-                                                <i class="fas fa-check-circle text-success"></i> 
-                                                Last sent: <?php echo date('d M Y, h:i A', strtotime($is_sent['sent_at'])); ?>
-                                            </small>
-                                        <?php endif; ?>
-                                        <hr>
-                                        <?php
-                                            // Build parties list for agent message
-                                            $parties_list = '';
-                                            $unique_parties = [];
-                                            foreach ($agent['invoices'] as $i) {
-                                                if (!in_array($i['party_name'], $unique_parties)) {
-                                                    $unique_parties[] = $i['party_name'];
-                                                }
-                                            }
-                                            foreach ($unique_parties as $pname) {
-                                                $party_outstanding = 0;
-                                                foreach ($agent['invoices'] as $i) {
-                                                    if ($i['party_name'] == $pname) {
-                                                        $party_outstanding += $i['outstanding'];
-                                                    }
-                                                }
-                                                $parties_list .= "• $pname - ₹" . number_format($party_outstanding, 2) . "\n";
-                                            }
-                                        ?>
-                                        <form method="POST">
-                                            <input type="hidden" name="send_agent_reminder" value="1">
-                                            <input type="hidden" name="agent_phone" value="<?php echo htmlspecialchars($agent['agent_phone']); ?>">
-                                            <input type="hidden" name="agent_name" value="<?php echo htmlspecialchars($agent['agent_name']); ?>">
-                                            <input type="hidden" name="total_amount" value="<?php echo $agent['total_outstanding']; ?>">
-                                            <input type="hidden" name="parties_list" value="<?php echo htmlspecialchars($parties_list); ?>">
-                                            <input type="hidden" name="client_ids" value="<?php echo implode(',', $agent['client_ids']); ?>">
-                                            <button type="submit" class="btn btn-whatsapp btn-sm w-100 <?php echo $is_sent ? 'resend' : ''; ?>">
-                                                <i class="fab fa-whatsapp"></i> 
-                                                <?php echo $is_sent ? 'Re-send Reminder' : 'Send Reminder'; ?> to Agent
-                                            </button>
-                                        </form>
+                                    <div class="card-body p-0">
+                                        <!-- Agent Info Row -->
+                                        <div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center flex-wrap">
+                                            <div>
+                                                <i class="fas fa-phone text-muted"></i> 
+                                                <strong><?php echo htmlspecialchars($agent['agent_phone']); ?></strong>
+                                                <?php if ($is_sent): ?>
+                                                    <small class="text-muted ms-3">
+                                                        <i class="fas fa-check-circle text-success"></i> 
+                                                        Last sent: <?php echo date('d M Y, h:i A', strtotime($is_sent['sent_at'])); ?>
+                                                    </small>
+                                                <?php endif; ?>
+                                            </div>
+                                            <form method="POST" class="d-inline">
+                                                <input type="hidden" name="send_agent_reminder" value="1">
+                                                <input type="hidden" name="agent_phone" value="<?php echo htmlspecialchars($agent['agent_phone']); ?>">
+                                                <input type="hidden" name="agent_name" value="<?php echo htmlspecialchars($agent['agent_name']); ?>">
+                                                <input type="hidden" name="total_amount" value="<?php echo $agent['total_outstanding']; ?>">
+                                                <input type="hidden" name="parties_list" value="<?php echo htmlspecialchars($parties_list); ?>">
+                                                <input type="hidden" name="client_ids" value="<?php echo implode(',', $agent['client_ids']); ?>">
+                                                <button type="submit" class="btn btn-whatsapp btn-sm">
+                                                    <i class="fab fa-whatsapp"></i> 
+                                                    <?php echo $is_sent ? 'Re-send' : 'Send'; ?> to Agent
+                                                </button>
+                                            </form>
+                                        </div>
+                                        
+                                        <!-- Invoices Table -->
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-hover mb-0">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Invoice #</th>
+                                                        <th>Date</th>
+                                                        <th>Party</th>
+                                                        <th>Phone</th>
+                                                        <th class="text-end">Bill Amt</th>
+                                                        <th class="text-end">Outstanding</th>
+                                                        <th>Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach ($agent['invoices'] as $inv): ?>
+                                                        <tr>
+                                                            <td><strong class="text-primary">#<?php echo htmlspecialchars($inv['invoice_no']); ?></strong></td>
+                                                            <td><?php echo date('d M Y', strtotime($inv['date'])); ?></td>
+                                                            <td><?php echo htmlspecialchars($inv['party_name']); ?></td>
+                                                            <td><small><?php echo $inv['party_phone'] ?? '-'; ?></small></td>
+                                                            <td class="text-end">₹<?php echo number_format($inv['total_amount'], 2); ?></td>
+                                                            <td class="text-end"><strong class="text-danger">₹<?php echo number_format($inv['outstanding'], 2); ?></strong></td>
+                                                            <td>
+                                                                <?php if ($inv['paid_amount'] > 0): ?>
+                                                                    <span class="badge bg-warning text-dark">Partial</span>
+                                                                <?php else: ?>
+                                                                    <span class="badge bg-danger">Open</span>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                                <tfoot class="table-secondary">
+                                                    <tr>
+                                                        <th colspan="4" class="text-end">Total:</th>
+                                                        <th class="text-end">₹<?php echo number_format($agent['total_bill'], 2); ?></th>
+                                                        <th class="text-end text-danger">₹<?php echo number_format($agent['total_outstanding'], 2); ?></th>
+                                                        <th></th>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <div class="alert alert-info">No agent reminders pending</div>
+                            <div class="alert alert-success text-center">
+                                <i class="fas fa-check-circle fa-2x mb-2"></i>
+                                <p class="mb-0">No agent reminders pending!</p>
+                            </div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- Direct Party Reminders -->
-                    <div class="col-md-6">
-                        <h5 class="mb-3"><i class="fas fa-building text-warning"></i> Direct Party Reminders</h5>
+                    <!-- DIRECT PARTIES TAB -->
+                    <div class="tab-pane fade" id="direct-parties" role="tabpanel">
                         <?php if (count($party_direct) > 0): ?>
-                            <?php foreach ($party_direct as $party): ?>
-                                <?php
-                                    // Check if reminder already sent
-                                    $is_sent = isReminderSent($conn, $party['client_id'], 'Party');
-                                ?>
-                                <div class="whatsapp-card card <?php echo $is_sent ? 'sent' : ''; ?>">
-                                    <div class="card-header d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <strong><?php echo htmlspecialchars($party['party_name']); ?></strong>
-                                            <?php if ($is_sent): ?>
-                                                <span class="badge badge-sent ms-2">✓ Sent</span>
-                                            <?php else: ?>
-                                                <span class="badge badge-pending ms-2">⏳ Pending</span>
-                                            <?php endif; ?>
-                                            <br><small><i class="fas fa-phone"></i> <?php echo $party['party_phone']; ?></small>
-                                        </div>
-                                        <div class="text-end">
-                                            <span class="badge bg-light text-dark">
-                                                <?php echo count($party['invoices']); ?> bills
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div class="card-body">
-                                        <p class="mb-2">
-                                            <strong>Total Bill:</strong> ₹<?php echo number_format($party['total_bill'], 2); ?><br>
-                                            <strong class="text-danger">Outstanding:</strong> ₹<?php echo number_format($party['total_outstanding'], 2); ?>
-                                        </p>
-                                        <?php if ($is_sent): ?>
-                                            <small class="text-muted">
-                                                <i class="fas fa-check-circle text-success"></i> 
-                                                Last sent: <?php echo date('d M Y, h:i A', strtotime($is_sent['sent_at'])); ?>
-                                            </small>
-                                        <?php endif; ?>
-                                        <hr>
-                                        <?php
-                                            $bill_details = '';
-                                            foreach ($party['invoices'] as $i) {
-                                                $bill_details .= "#" . $i['invoice_no'] . " - ₹" . number_format($i['outstanding'], 2) . "\n";
-                                            }
-                                        ?>
-                                        <form method="POST">
-                                            <input type="hidden" name="send_reminder" value="1">
-                                            <input type="hidden" name="client_id" value="<?php echo $party['client_id']; ?>">
-                                            <input type="hidden" name="send_to" value="<?php echo htmlspecialchars($party['party_phone']); ?>">
-                                            <input type="hidden" name="recipient_type" value="Party">
-                                            <input type="hidden" name="total_amount" value="<?php echo $party['total_bill']; ?>">
-                                            <input type="hidden" name="outstanding_amount" value="<?php echo $party['total_outstanding']; ?>">
-                                            <input type="hidden" name="party_name" value="<?php echo htmlspecialchars($party['party_name']); ?>">
-                                            <input type="hidden" name="bills" value="<?php echo htmlspecialchars($bill_details); ?>">
-                                            <button type="submit" class="btn btn-whatsapp btn-sm w-100 <?php echo $is_sent ? 'resend' : ''; ?>">
-                                                <i class="fab fa-whatsapp"></i> 
-                                                <?php echo $is_sent ? 'Re-send Reminder' : 'Send Reminder'; ?> to Party
-                                            </button>
-                                        </form>
+                            <div class="card">
+                                <div class="card-header" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
+                                    <i class="fas fa-building"></i>
+                                    <strong class="ms-2">Direct Parties</strong>
+                                    <small class="ms-2">- WhatsApp directly to party (no agent)</small>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover mb-0" id="directPartiesTable">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th class="sortable" data-sort="party">Party <i class="fas fa-sort ms-1"></i></th>
+                                                    <th>Phone</th>
+                                                    <th class="text-center">Bills</th>
+                                                    <th class="text-end sortable" data-sort="bill">Total Bill <i class="fas fa-sort ms-1"></i></th>
+                                                    <th class="text-end sortable" data-sort="outstanding">Outstanding <i class="fas fa-sort ms-1"></i></th>
+                                                    <th class="text-center">Status</th>
+                                                    <th class="text-center">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php 
+                                                // Apply search & sort filters
+                                                $party_array = array_values($party_direct);
+                                                
+                                                // Sort
+                                                usort($party_array, function($a, $b) use ($wa_sort) {
+                                                    switch ($wa_sort) {
+                                                        case 'outstanding_asc': return $a['total_outstanding'] - $b['total_outstanding'];
+                                                        case 'outstanding_desc': return $b['total_outstanding'] - $a['total_outstanding'];
+                                                        case 'party_asc': return strcasecmp($a['party_name'], $b['party_name']);
+                                                        case 'party_desc': return strcasecmp($b['party_name'], $a['party_name']);
+                                                        default: return $b['total_outstanding'] - $a['total_outstanding'];
+                                                    }
+                                                });
+                                                
+                                                foreach ($party_array as $party): 
+                                                    // Search filter
+                                                    if (!empty($wa_search)) {
+                                                        $match = false;
+                                                        if (stripos($party['party_name'], $wa_search) !== false || 
+                                                            stripos($party['party_phone'], $wa_search) !== false) {
+                                                            $match = true;
+                                                        }
+                                                        foreach ($party['invoices'] as $inv) {
+                                                            if (stripos($inv['invoice_no'], $wa_search) !== false) {
+                                                                $match = true;
+                                                                break;
+                                                            }
+                                                        }
+                                                        if (!$match) continue;
+                                                    }
+                                                    
+                                                    // Check if reminder already sent
+                                                    $is_sent = isReminderSent($conn, $party['client_id'], 'Party');
+                                                    
+                                                    // Status filter
+                                                    if ($wa_status == 'pending' && $is_sent) continue;
+                                                    if ($wa_status == 'sent' && !$is_sent) continue;
+                                                    
+                                                    // Build bill details
+                                                    $bill_details = '';
+                                                    foreach ($party['invoices'] as $i) {
+                                                        $bill_details .= "#" . $i['invoice_no'] . " - ₹" . number_format($i['outstanding'], 2) . "\n";
+                                                    }
+                                                ?>
+                                                    <tr>
+                                                        <td>
+                                                            <strong><?php echo htmlspecialchars($party['party_name']); ?></strong>
+                                                            <?php if ($is_sent): ?>
+                                                                <br><small class="text-muted">
+                                                                    <i class="fas fa-check-circle text-success"></i> 
+                                                                    Sent: <?php echo date('d M, h:i A', strtotime($is_sent['sent_at'])); ?>
+                                                                </small>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <td>
+                                                            <i class="fas fa-phone text-muted"></i> 
+                                                            <?php echo htmlspecialchars($party['party_phone']); ?>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <span class="badge bg-secondary"><?php echo count($party['invoices']); ?></span>
+                                                        </td>
+                                                        <td class="text-end">₹<?php echo number_format($party['total_bill'], 2); ?></td>
+                                                        <td class="text-end"><strong class="text-danger">₹<?php echo number_format($party['total_outstanding'], 2); ?></strong></td>
+                                                        <td class="text-center">
+                                                            <?php if ($is_sent): ?>
+                                                                <span class="badge badge-sent">✓ Sent</span>
+                                                            <?php else: ?>
+                                                                <span class="badge badge-pending">⏳ Pending</span>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <?php if (!empty($party['party_phone'])): ?>
+                                                                <form method="POST" class="d-inline">
+                                                                    <input type="hidden" name="send_reminder" value="1">
+                                                                    <input type="hidden" name="client_id" value="<?php echo $party['client_id']; ?>">
+                                                                    <input type="hidden" name="send_to" value="<?php echo htmlspecialchars($party['party_phone']); ?>">
+                                                                    <input type="hidden" name="recipient_type" value="Party">
+                                                                    <input type="hidden" name="total_amount" value="<?php echo $party['total_bill']; ?>">
+                                                                    <input type="hidden" name="outstanding_amount" value="<?php echo $party['total_outstanding']; ?>">
+                                                                    <input type="hidden" name="party_name" value="<?php echo htmlspecialchars($party['party_name']); ?>">
+                                                                    <input type="hidden" name="bills" value="<?php echo htmlspecialchars($bill_details); ?>">
+                                                                    <button type="submit" class="btn btn-whatsapp btn-sm">
+                                                                        <i class="fab fa-whatsapp"></i> 
+                                                                        <?php echo $is_sent ? 'Re-send' : 'Send'; ?>
+                                                                    </button>
+                                                                </form>
+                                                            <?php else: ?>
+                                                                <span class="text-muted">No Phone</span>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
-                            <?php endforeach; ?>
+                            </div>
                         <?php else: ?>
-                            <div class="alert alert-info">No direct party reminders pending</div>
+                            <div class="alert alert-success text-center">
+                                <i class="fas fa-check-circle fa-2x mb-2"></i>
+                                <p class="mb-0">No direct party reminders pending!</p>
+                            </div>
                         <?php endif; ?>
                     </div>
                 </div>
