@@ -758,9 +758,9 @@ foreach ($outstanding_invoices as $inv) {
                                                 </td>
                                                 <td><?php echo date('d M Y', strtotime($inv['date'])); ?></td>
                                                 <td>
-                                                    <?php echo htmlspecialchars($inv['party_name']); ?>
+                                                    <?php echo htmlspecialchars($inv['party_name'] ?? 'Unknown Party'); ?>
                                                     <?php if (!empty($inv['party_phone'])): ?>
-                                                        <br><small class="text-muted"><i class="fas fa-phone"></i> <?php echo $inv['party_phone']; ?></small>
+                                                        <br><small class="text-muted"><i class="fas fa-phone"></i> <?php echo htmlspecialchars($inv['party_phone'] ?? ''); ?></small>
                                                     <?php endif; ?>
                                                 </td>
                                                 <td>
@@ -773,9 +773,9 @@ foreach ($outstanding_invoices as $inv) {
                                                     <button type="button" class="btn btn-mark-paid" 
                                                             onclick="openMarkPaymentModal(
                                                                 <?php echo $inv['invoice_id']; ?>,
-                                                                '<?php echo addslashes($inv['invoice_no']); ?>',
-                                                                '<?php echo addslashes($inv['party_name']); ?>',
-                                                                <?php echo $inv['total_amount']; ?>,
+                                                                '<?php echo addslashes($inv['invoice_no'] ?? ''); ?>',
+                                                                '<?php echo addslashes($inv['party_name'] ?? 'Unknown Party'); ?>',
+                                                                <?php echo $inv['total_amount'] ?? 0; ?>,
                                                                 <?php echo $inv['paid_amount']; ?>,
                                                                 <?php echo $inv['outstanding']; ?>
                                                             )">
@@ -823,8 +823,8 @@ foreach ($outstanding_invoices as $inv) {
                                         <?php while ($h = $history_result->fetch_assoc()): ?>
                                             <tr>
                                                 <td><?php echo date('d M Y', strtotime($h['received_date'])); ?></td>
-                                                <td><strong class="text-primary">#<?php echo htmlspecialchars($h['invoice_no']); ?></strong></td>
-                                                <td><?php echo htmlspecialchars($h['party_name']); ?></td>
+                                                <td><strong class="text-primary">#<?php echo htmlspecialchars($h['invoice_no'] ?? ''); ?></strong></td>
+                                                <td><?php echo htmlspecialchars($h['party_name'] ?? 'Unknown Party'); ?></td>
                                                 <td>
                                                     <?php 
                                                         $mode_class = strtolower(str_replace(' ', '', $h['payment_mode']));
@@ -886,8 +886,8 @@ foreach ($outstanding_invoices as $inv) {
                                             <?php if ($today_detail_result && $today_detail_result->num_rows > 0): ?>
                                                 <?php while ($t = $today_detail_result->fetch_assoc()): ?>
                                                     <tr>
-                                                        <td><strong class="text-primary">#<?php echo htmlspecialchars($t['invoice_no']); ?></strong></td>
-                                                        <td><?php echo htmlspecialchars($t['party_name']); ?></td>
+                                                        <td><strong class="text-primary">#<?php echo htmlspecialchars($t['invoice_no'] ?? ''); ?></strong></td>
+                                                        <td><?php echo htmlspecialchars($t['party_name'] ?? 'Unknown Party'); ?></td>
                                                         <td>
                                                             <?php 
                                                                 $mode_class = strtolower(str_replace(' ', '', $t['payment_mode']));
@@ -1074,7 +1074,7 @@ foreach ($outstanding_invoices as $inv) {
                                          style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
                                         <div>
                                             <i class="fas fa-user-tie"></i>
-                                            <strong class="ms-2"><?php echo htmlspecialchars($agent['agent_name']); ?></strong>
+                                            <strong class="ms-2"><?php echo htmlspecialchars($agent['agent_name'] ?? 'Unknown Agent'); ?></strong>
                                             <?php if ($is_sent): ?>
                                                 <span class="badge bg-success ms-2">✓ Sent</span>
                                             <?php else: ?>
@@ -1091,7 +1091,7 @@ foreach ($outstanding_invoices as $inv) {
                                         <div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center flex-wrap">
                                             <div>
                                                 <i class="fas fa-phone text-muted"></i> 
-                                                <strong><?php echo htmlspecialchars($agent['agent_phone']); ?></strong>
+                                                <strong><?php echo htmlspecialchars($agent['agent_phone'] ?? ''); ?></strong>
                                                 <?php if ($is_sent): ?>
                                                     <small class="text-muted ms-3">
                                                         <i class="fas fa-check-circle text-success"></i> 
@@ -1145,10 +1145,10 @@ foreach ($outstanding_invoices as $inv) {
                                                 <tbody>
                                                     <?php foreach ($agent['invoices'] as $inv): ?>
                                                         <tr>
-                                                            <td><strong class="text-primary">#<?php echo htmlspecialchars($inv['invoice_no']); ?></strong></td>
+                                                            <td><strong class="text-primary">#<?php echo htmlspecialchars($inv['invoice_no'] ?? ''); ?></strong></td>
                                                             <td><?php echo date('d M Y', strtotime($inv['date'])); ?></td>
-                                                            <td><?php echo htmlspecialchars($inv['party_name']); ?></td>
-                                                            <td><small><?php echo $inv['party_phone'] ?? '-'; ?></small></td>
+                                                            <td><?php echo htmlspecialchars($inv['party_name'] ?? 'Unknown Party'); ?></td>
+                                                            <td><small><?php echo htmlspecialchars($inv['party_phone'] ?? '-'); ?></small></td>
                                                             <td class="text-end">₹<?php echo formatIndianCurrency($inv['total_amount'], 2); ?></td>
                                                             <td class="text-end"><strong class="text-danger">₹<?php echo formatIndianCurrency($inv['outstanding'], 2); ?></strong></td>
                                                             <td>
@@ -1271,7 +1271,7 @@ foreach ($outstanding_invoices as $inv) {
                                                 ?>
                                                     <tr>
                                                         <td>
-                                                            <strong><?php echo htmlspecialchars($party['party_name']); ?></strong>
+                                                            <strong><?php echo htmlspecialchars($party['party_name'] ?? 'Unknown Party'); ?></strong>
                                                             <?php if ($is_sent): ?>
                                                                 <br><small class="text-muted">
                                                                     <i class="fas fa-check-circle text-success"></i> 
@@ -1281,7 +1281,7 @@ foreach ($outstanding_invoices as $inv) {
                                                         </td>
                                                         <td>
                                                             <i class="fas fa-phone text-muted"></i> 
-                                                            <?php echo htmlspecialchars($party['party_phone']); ?>
+                                                            <?php echo htmlspecialchars($party['party_phone'] ?? ''); ?>
                                                         </td>
                                                         <td class="text-center">
                                                             <span class="badge bg-secondary"><?php echo count($party['invoices']); ?></span>
