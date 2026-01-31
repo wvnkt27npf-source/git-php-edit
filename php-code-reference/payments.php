@@ -1487,10 +1487,37 @@ foreach ($outstanding_invoices as $inv) {
         return isNaN(parsed) ? 0 : parsed;
     }
     
-    // Format number in Indian format
+    // Format number in Indian Lakh/Crore format (₹13,87,629.00)
     function formatIndianNumber(num) {
         num = parseLocalizedNumber(num);
-        return num.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        // Handle negative numbers
+        const isNegative = num < 0;
+        num = Math.abs(num);
+        
+        // Split into integer and decimal parts
+        const [intPart, decPart] = num.toFixed(2).split('.');
+        
+        // Apply Indian comma format: first 3 digits, then every 2 digits
+        let result = '';
+        const len = intPart.length;
+        
+        if (len <= 3) {
+            result = intPart;
+        } else {
+            // Last 3 digits
+            result = intPart.slice(-3);
+            // Remaining digits in groups of 2
+            let remaining = intPart.slice(0, -3);
+            while (remaining.length > 2) {
+                result = remaining.slice(-2) + ',' + result;
+                remaining = remaining.slice(0, -2);
+            }
+            if (remaining.length > 0) {
+                result = remaining + ',' + result;
+            }
+        }
+        
+        return (isNegative ? '-' : '') + result + '.' + decPart;
     }
     
     // Update character count
