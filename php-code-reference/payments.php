@@ -262,12 +262,16 @@ if (isset($_POST['send_reminder'])) {
     if (isset($result['sent']) && $result['sent'] == 'true') {
         // Log the successful send
         logReminderSent($conn, $client_id, 'Party', $send_to, 'Sent');
-        $alert_script = "<script>Swal.fire('Sent!', 'Reminder sent to $party_name successfully', 'success');</script>";
+        // Redirect to WhatsApp tab with success message
+        header("Location: payments.php?tab=whatsapp&msg=sent&name=" . urlencode($party_name));
+        exit;
     } else {
         // Log the failed attempt
         logReminderSent($conn, $client_id, 'Party', $send_to, 'Failed');
         $error_msg = $result['error'] ?? 'Unknown error';
-        $alert_script = "<script>Swal.fire('Error', 'Failed to send: $error_msg', 'error');</script>";
+        // Redirect to WhatsApp tab with error
+        header("Location: payments.php?tab=whatsapp&msg=error&error=" . urlencode($error_msg));
+        exit;
     }
 }
 
@@ -307,7 +311,9 @@ if (isset($_POST['send_agent_reminder'])) {
                 logReminderSent($conn, $cid, 'Agent', $agent_phone, 'Sent');
             }
         }
-        $alert_script = "<script>Swal.fire('Sent!', 'Reminder sent to Agent $agent_name successfully', 'success');</script>";
+        // Redirect to WhatsApp tab with success message
+        header("Location: payments.php?tab=whatsapp&msg=sent&name=" . urlencode($agent_name));
+        exit;
     } else {
         // Log failed for all clients
         foreach ($client_ids as $cid) {
@@ -317,7 +323,9 @@ if (isset($_POST['send_agent_reminder'])) {
             }
         }
         $error_msg = $result['error'] ?? 'Unknown error';
-        $alert_script = "<script>Swal.fire('Error', 'Failed to send: $error_msg', 'error');</script>";
+        // Redirect to WhatsApp tab with error
+        header("Location: payments.php?tab=whatsapp&msg=error&error=" . urlencode($error_msg));
+        exit;
     }
 }
 
@@ -589,7 +597,19 @@ foreach ($outstanding_invoices as $inv) {
     </style>
 </head>
 <body>
-    <?php echo $alert_script; ?>
+    <?php 
+    // Handle success/error messages from redirect
+    if (isset($_GET['msg'])) {
+        $msg_name = htmlspecialchars($_GET['name'] ?? 'Party');
+        if ($_GET['msg'] == 'sent') {
+            echo "<script>Swal.fire('Sent!', 'Reminder sent to $msg_name successfully', 'success');</script>";
+        } elseif ($_GET['msg'] == 'error') {
+            $error_msg = htmlspecialchars($_GET['error'] ?? 'Unknown error');
+            echo "<script>Swal.fire('Error', 'Failed to send: $error_msg', 'error');</script>";
+        }
+    }
+    echo $alert_script; 
+    ?>
     
     <div class="container-fluid py-4">
         <!-- Page Header -->
@@ -1425,7 +1445,7 @@ foreach ($outstanding_invoices as $inv) {
     <div class="modal fade" id="whatsappPreviewModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <form method="POST" action="payments.php" id="waPreviewForm">
+                <form method="POST" action="payments.php?tab=whatsapp" id="waPreviewForm">
                     <!-- Hidden fields for form submission -->
                     <input type="hidden" name="wa_type" id="wa_type" value="">
                     <input type="hidden" name="send_reminder" id="wa_send_reminder" value="">
@@ -1587,6 +1607,49 @@ foreach ($outstanding_invoices as $inv) {
         url.searchParams.set('wa_sort', sortValue);
         window.location.href = url.toString();
     }
+    
+    // Auto-select correct tab based on URL parameter
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const activeTab = urlParams.get('tab');
+        
+        if (activeTab) {
+            // Deactivate all tabs
+            document.querySelectorAll('#paymentTabs .nav-link').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('#paymentTabsContent .tab-pane').forEach(pane => {
+                pane.classList.remove('show', 'active');
+            });
+            
+            // Activate the correct tab
+            const targetTab = document.getElementById(activeTab + '-tab');
+            const targetPane = document.getElementById(activeTab);
+            
+            if (targetTab && targetPane) {
+                targetTab.classList.add('active');
+                targetPane.classList.add('show', 'active');
+            }
+        }
+        
+        // Also handle wa_search, wa_sort, wa_status - they indicate WhatsApp tab
+        if (urlParams.get('wa_search') || urlParams.get('wa_sort') || urlParams.get('wa_status')) {
+            document.querySelectorAll('#paymentTabs .nav-link').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('#paymentTabsContent .tab-pane').forEach(pane => {
+                pane.classList.remove('show', 'active');
+            });
+            
+            const whatsappTab = document.getElementById('whatsapp-tab');
+            const whatsappPane = document.getElementById('whatsapp');
+            
+            if (whatsappTab && whatsappPane) {
+                whatsappTab.classList.add('active');
+                whatsappPane.classList.add('show', 'active');
+            }
+        }
+    });
     </script>
 </body>
 </html>
