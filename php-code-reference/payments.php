@@ -39,6 +39,37 @@
 include 'db.php';
 include 'header.php';
 
+// Indian Lakh/Crore number format function (₹13,87,629.00)
+function formatIndianCurrency($num, $decimals = 2) {
+    $num = floatval($num);
+    $isNegative = $num < 0;
+    $num = abs($num);
+    
+    // Split into integer and decimal parts
+    $parts = explode('.', number_format($num, $decimals, '.', ''));
+    $intPart = $parts[0];
+    $decPart = $parts[1] ?? str_repeat('0', $decimals);
+    
+    $len = strlen($intPart);
+    if ($len <= 3) {
+        $result = $intPart;
+    } else {
+        // Last 3 digits
+        $result = substr($intPart, -3);
+        // Remaining digits in groups of 2
+        $remaining = substr($intPart, 0, -3);
+        while (strlen($remaining) > 2) {
+            $result = substr($remaining, -2) . ',' . $result;
+            $remaining = substr($remaining, 0, -2);
+        }
+        if (strlen($remaining) > 0) {
+            $result = $remaining . ',' . $result;
+        }
+    }
+    
+    return ($isNegative ? '-' : '') . $result . '.' . $decPart;
+}
+
 // Get UltraMsg settings AND Company info from database
 $settings = $conn->query("SELECT * FROM settings LIMIT 1")->fetch_assoc();
 $ultramsg_token = $settings['wa_token'] ?? '';
@@ -159,14 +190,14 @@ function buildReminderMessage($party_name, $bills, $total_bill, $outstanding, $c
         $message .= "Namaskar *$agent_name* Ji 🙏\n\n";
         $message .= "Pending collection ke liye reminder:\n\n";
         $message .= "$parties_list\n";
-        $message .= "*Total Due: ₹" . number_format($outstanding, 0) . "*\n\n";
+        $message .= "*Total Due: ₹" . formatIndianCurrency($outstanding, 2) . "*\n\n";
         $message .= "Kripya collection karwa dein.\n\n";
     } else {
         // Party Message - Clean & Professional
         $message .= "Namaskar *$party_name* Ji 🙏\n\n";
         $message .= "Aapke pending bills:\n\n";
         $message .= "$bills\n";
-        $message .= "*Outstanding: ₹" . number_format($outstanding, 0) . "*\n\n";
+        $message .= "*Outstanding: ₹" . formatIndianCurrency($outstanding, 2) . "*\n\n";
         $message .= "Kripya payment karein.\n\n";
     }
     
@@ -595,7 +626,7 @@ foreach ($outstanding_invoices as $inv) {
                         <div class="d-flex justify-content-between">
                             <div>
                                 <h6 class="text-muted mb-1">Total Bill Amount</h6>
-                                <h3 class="mb-0 text-primary">₹<?php echo number_format($total_bill, 2); ?></h3>
+                                <h3 class="mb-0 text-primary">₹<?php echo formatIndianCurrency($total_bill, 2); ?></h3>
                             </div>
                             <div class="align-self-center">
                                 <i class="fas fa-file-invoice fa-2x text-primary opacity-50"></i>
@@ -610,7 +641,7 @@ foreach ($outstanding_invoices as $inv) {
                         <div class="d-flex justify-content-between">
                             <div>
                                 <h6 class="text-muted mb-1">Outstanding Balance</h6>
-                                <h3 class="mb-0 text-danger">₹<?php echo number_format($total_outstanding, 2); ?></h3>
+                                <h3 class="mb-0 text-danger">₹<?php echo formatIndianCurrency($total_outstanding, 2); ?></h3>
                             </div>
                             <div class="align-self-center">
                                 <i class="fas fa-exclamation-triangle fa-2x text-danger opacity-50"></i>
@@ -625,7 +656,7 @@ foreach ($outstanding_invoices as $inv) {
                         <div class="d-flex justify-content-between">
                             <div>
                                 <h6 class="text-muted mb-1">Today's Collection</h6>
-                                <h3 class="mb-0 text-success">₹<?php echo number_format($today_data['total_collected'], 2); ?></h3>
+                                <h3 class="mb-0 text-success">₹<?php echo formatIndianCurrency($today_data['total_collected'], 2); ?></h3>
                                 <small class="text-muted"><?php echo $today_data['receipt_count']; ?> receipts</small>
                             </div>
                             <div class="align-self-center">
@@ -734,9 +765,9 @@ foreach ($outstanding_invoices as $inv) {
                                                 <td>
                                                     <?php echo htmlspecialchars($inv['agent_name'] ?? 'DIRECT'); ?>
                                                 </td>
-                                                <td class="text-end">₹<?php echo number_format($inv['total_amount'], 2); ?></td>
-                                                <td class="text-end text-success">₹<?php echo number_format($inv['paid_amount'], 2); ?></td>
-                                                <td class="text-end"><strong class="text-danger">₹<?php echo number_format($inv['outstanding'], 2); ?></strong></td>
+                                                <td class="text-end">₹<?php echo formatIndianCurrency($inv['total_amount'], 2); ?></td>
+                                                <td class="text-end text-success">₹<?php echo formatIndianCurrency($inv['paid_amount'], 2); ?></td>
+                                                <td class="text-end"><strong class="text-danger">₹<?php echo formatIndianCurrency($inv['outstanding'], 2); ?></strong></td>
                                                 <td class="text-center">
                                                     <button type="button" class="btn btn-mark-paid" 
                                                             onclick="openMarkPaymentModal(
@@ -802,7 +833,7 @@ foreach ($outstanding_invoices as $inv) {
                                                         <?php echo htmlspecialchars($h['payment_mode']); ?>
                                                     </span>
                                                 </td>
-                                                <td class="text-end"><strong class="text-success">₹<?php echo number_format($h['amount'], 2); ?></strong></td>
+                                                <td class="text-end"><strong class="text-success">₹<?php echo formatIndianCurrency($h['amount'], 2); ?></strong></td>
                                                 <td><small class="text-muted"><?php echo htmlspecialchars($h['remarks'] ?? '-'); ?></small></td>
                                             </tr>
                                         <?php endwhile; ?>
@@ -828,7 +859,7 @@ foreach ($outstanding_invoices as $inv) {
                         <div class="card bg-success text-white">
                             <div class="card-body text-center">
                                 <h6 class="opacity-75">Today's Total Collection</h6>
-                                <h1 class="display-4 mb-0">₹<?php echo number_format($today_data['total_collected'], 2); ?></h1>
+                                <h1 class="display-4 mb-0">₹<?php echo formatIndianCurrency($today_data['total_collected'], 2); ?></h1>
                                 <p class="mb-0 opacity-75"><?php echo $today_data['receipt_count']; ?> payment(s) received</p>
                             </div>
                         </div>
@@ -865,7 +896,7 @@ foreach ($outstanding_invoices as $inv) {
                                                                 <?php echo htmlspecialchars($t['payment_mode']); ?>
                                                             </span>
                                                         </td>
-                                                        <td class="text-end"><strong class="text-success">₹<?php echo number_format($t['amount'], 2); ?></strong></td>
+                                                        <td class="text-end"><strong class="text-success">₹<?php echo formatIndianCurrency($t['amount'], 2); ?></strong></td>
                                                         <td><small class="text-muted"><?php echo htmlspecialchars($t['remarks'] ?? '-'); ?></small></td>
                                                     </tr>
                                                 <?php endwhile; ?>
@@ -1033,7 +1064,7 @@ foreach ($outstanding_invoices as $inv) {
                                                 $party_outstanding += $i['outstanding'];
                                             }
                                         }
-                                        $parties_list .= "• $pname - ₹" . number_format($party_outstanding, 2) . "\n";
+                                        $parties_list .= "• $pname - ₹" . formatIndianCurrency($party_outstanding, 2) . "\n";
                                     }
                                 ?>
                                 
@@ -1051,7 +1082,7 @@ foreach ($outstanding_invoices as $inv) {
                                         </div>
                                         <div class="text-end">
                                             <span class="badge bg-white text-dark"><?php echo count($agent['invoices']); ?> Bills</span>
-                                            <span class="badge bg-danger ms-1">₹<?php echo number_format($agent['total_outstanding'], 0); ?> Due</span>
+                                            <span class="badge bg-danger ms-1">₹<?php echo formatIndianCurrency($agent['total_outstanding'], 2); ?> Due</span>
                                         </div>
                                     </div>
                                     <div class="card-body p-0">
@@ -1117,8 +1148,8 @@ foreach ($outstanding_invoices as $inv) {
                                                             <td><?php echo date('d M Y', strtotime($inv['date'])); ?></td>
                                                             <td><?php echo htmlspecialchars($inv['party_name']); ?></td>
                                                             <td><small><?php echo $inv['party_phone'] ?? '-'; ?></small></td>
-                                                            <td class="text-end">₹<?php echo number_format($inv['total_amount'], 2); ?></td>
-                                                            <td class="text-end"><strong class="text-danger">₹<?php echo number_format($inv['outstanding'], 2); ?></strong></td>
+                                                            <td class="text-end">₹<?php echo formatIndianCurrency($inv['total_amount'], 2); ?></td>
+                                                            <td class="text-end"><strong class="text-danger">₹<?php echo formatIndianCurrency($inv['outstanding'], 2); ?></strong></td>
                                                             <td>
                                                                 <?php if ($inv['paid_amount'] > 0): ?>
                                                                     <span class="badge bg-warning text-dark">Partial</span>
@@ -1132,8 +1163,8 @@ foreach ($outstanding_invoices as $inv) {
                                                 <tfoot class="table-secondary">
                                                     <tr>
                                                         <th colspan="4" class="text-end">Total:</th>
-                                                        <th class="text-end">₹<?php echo number_format($agent['total_bill'], 2); ?></th>
-                                                        <th class="text-end text-danger">₹<?php echo number_format($agent['total_outstanding'], 2); ?></th>
+                                                        <th class="text-end">₹<?php echo formatIndianCurrency($agent['total_bill'], 2); ?></th>
+                                                        <th class="text-end text-danger">₹<?php echo formatIndianCurrency($agent['total_outstanding'], 2); ?></th>
                                                         <th></th>
                                                     </tr>
                                                 </tfoot>
@@ -1234,7 +1265,7 @@ foreach ($outstanding_invoices as $inv) {
                                                     // Build bill details
                                                     $bill_details = '';
                                                     foreach ($party['invoices'] as $i) {
-                                                        $bill_details .= "#" . $i['invoice_no'] . " - ₹" . number_format($i['outstanding'], 2) . "\n";
+                                                        $bill_details .= "#" . $i['invoice_no'] . " - ₹" . formatIndianCurrency($i['outstanding'], 2) . "\n";
                                                     }
                                                 ?>
                                                     <tr>
@@ -1254,8 +1285,8 @@ foreach ($outstanding_invoices as $inv) {
                                                         <td class="text-center">
                                                             <span class="badge bg-secondary"><?php echo count($party['invoices']); ?></span>
                                                         </td>
-                                                        <td class="text-end">₹<?php echo number_format($party['total_bill'], 2); ?></td>
-                                                        <td class="text-end"><strong class="text-danger">₹<?php echo number_format($party['total_outstanding'], 2); ?></strong></td>
+                                                        <td class="text-end">₹<?php echo formatIndianCurrency($party['total_bill'], 2); ?></td>
+                                                        <td class="text-end"><strong class="text-danger">₹<?php echo formatIndianCurrency($party['total_outstanding'], 2); ?></strong></td>
                                                         <td class="text-center">
                                                             <?php if ($is_sent): ?>
                                                                 <span class="badge badge-sent">✓ Sent</span>
