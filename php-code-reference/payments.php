@@ -1100,16 +1100,15 @@ foreach ($outstanding_invoices as $inv) {
                                                     $parties_list
                                                 );
                                             ?>
-                                            <button type="button" class="btn btn-whatsapp btn-sm"
-                                                onclick="openWhatsAppPreview('agent', 
-                                                    '<?php echo implode(',', $agent['client_ids']); ?>', 
-                                                    '<?php echo htmlspecialchars(addslashes($agent['agent_phone'])); ?>', 
-                                                    '<?php echo htmlspecialchars(addslashes($agent['agent_name'])); ?>',
-                                                    '<?php echo $agent['total_outstanding']; ?>',
-                                                    '<?php echo $agent['total_outstanding']; ?>',
-                                                    '<?php echo htmlspecialchars(addslashes($parties_list)); ?>',
-                                                    <?php echo json_encode($agent_preview_msg); ?>
-                                                )">
+                                            <button type="button" class="btn btn-whatsapp btn-sm wa-preview-btn"
+                                                data-type="agent"
+                                                data-clientid="<?php echo implode(',', $agent['client_ids']); ?>"
+                                                data-phone="<?php echo htmlspecialchars($agent['agent_phone']); ?>"
+                                                data-name="<?php echo htmlspecialchars($agent['agent_name']); ?>"
+                                                data-total="<?php echo $agent['total_outstanding']; ?>"
+                                                data-outstanding="<?php echo $agent['total_outstanding']; ?>"
+                                                data-bills="<?php echo htmlspecialchars($parties_list); ?>"
+                                                data-message="<?php echo htmlspecialchars($agent_preview_msg); ?>">
                                                 <i class="fab fa-whatsapp"></i> 
                                                 <?php echo $is_sent ? 'Re-send' : 'Send'; ?> to Agent
                                             </button>
@@ -1290,16 +1289,15 @@ foreach ($outstanding_invoices as $inv) {
                                                                     false
                                                                 );
                                                             ?>
-                                                                <button type="button" class="btn btn-whatsapp btn-sm" 
-                                                                    onclick="openWhatsAppPreview('party', 
-                                                                        '<?php echo $party['client_id']; ?>', 
-                                                                        '<?php echo htmlspecialchars(addslashes($party['party_phone'])); ?>', 
-                                                                        '<?php echo htmlspecialchars(addslashes($party['party_name'])); ?>',
-                                                                        '<?php echo $party['total_bill']; ?>',
-                                                                        '<?php echo $party['total_outstanding']; ?>',
-                                                                        '<?php echo htmlspecialchars(addslashes($bill_details)); ?>',
-                                                                        <?php echo json_encode($preview_msg); ?>
-                                                                    )">
+                                                                <button type="button" class="btn btn-whatsapp btn-sm wa-preview-btn" 
+                                                                    data-type="party"
+                                                                    data-clientid="<?php echo $party['client_id']; ?>"
+                                                                    data-phone="<?php echo htmlspecialchars($party['party_phone']); ?>"
+                                                                    data-name="<?php echo htmlspecialchars($party['party_name']); ?>"
+                                                                    data-total="<?php echo $party['total_bill']; ?>"
+                                                                    data-outstanding="<?php echo $party['total_outstanding']; ?>"
+                                                                    data-bills="<?php echo htmlspecialchars($bill_details); ?>"
+                                                                    data-message="<?php echo htmlspecialchars($preview_msg); ?>">
                                                                     <i class="fab fa-whatsapp"></i> 
                                                                     <?php echo $is_sent ? 'Re-send' : 'Send'; ?>
                                                                 </button>
@@ -1592,6 +1590,23 @@ foreach ($outstanding_invoices as $inv) {
                 whatsappPane.classList.add('show', 'active');
             }
         }
+        
+        // Event delegation for WhatsApp preview buttons
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('.wa-preview-btn');
+            if (!btn) return;
+            
+            const type = btn.dataset.type;
+            const clientId = btn.dataset.clientid;
+            const phone = btn.dataset.phone;
+            const name = btn.dataset.name;
+            const totalAmount = btn.dataset.total;
+            const outstandingAmount = btn.dataset.outstanding;
+            const billsOrParties = btn.dataset.bills;
+            const previewMessage = btn.dataset.message;
+            
+            openWhatsAppPreview(type, clientId, phone, name, totalAmount, outstandingAmount, billsOrParties, previewMessage);
+        });
     });
     </script>
 </body>
