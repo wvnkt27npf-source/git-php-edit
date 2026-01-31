@@ -1173,6 +1173,12 @@ foreach ($outstanding_invoices as $inv) {
 
                     <!-- DIRECT PARTIES TAB -->
                     <div class="tab-pane fade" id="direct-parties" role="tabpanel">
+                        <?php 
+                        // Ensure filter variables are defined for Direct Parties
+                        $wa_search = strtolower($_GET['wa_search'] ?? '');
+                        $wa_status = $_GET['wa_status'] ?? 'all';
+                        $wa_sort = $_GET['wa_sort'] ?? 'outstanding_desc';
+                        ?>
                         <?php if (count($party_direct) > 0): ?>
                             <div class="card">
                                 <div class="card-header" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
@@ -1185,11 +1191,26 @@ foreach ($outstanding_invoices as $inv) {
                                         <table class="table table-hover mb-0" id="directPartiesTable">
                                             <thead class="table-light">
                                                 <tr>
-                                                    <th class="sortable" data-sort="party">Party <i class="fas fa-sort ms-1"></i></th>
+                                                    <th style="cursor:pointer" onclick="applySort('party_<?php echo ($wa_sort == 'party_asc') ? 'desc' : 'asc'; ?>')">
+                                                        Party 
+                                                        <?php if ($wa_sort == 'party_asc'): ?><i class="fas fa-sort-alpha-down ms-1"></i>
+                                                        <?php elseif ($wa_sort == 'party_desc'): ?><i class="fas fa-sort-alpha-up ms-1"></i>
+                                                        <?php else: ?><i class="fas fa-sort ms-1 text-muted"></i>
+                                                        <?php endif; ?>
+                                                    </th>
                                                     <th>Phone</th>
                                                     <th class="text-center">Bills</th>
-                                                    <th class="text-end sortable" data-sort="bill">Total Bill <i class="fas fa-sort ms-1"></i></th>
-                                                    <th class="text-end sortable" data-sort="outstanding">Outstanding <i class="fas fa-sort ms-1"></i></th>
+                                                    <th class="text-end" style="cursor:pointer" onclick="applySort('outstanding_<?php echo ($wa_sort == 'outstanding_desc') ? 'asc' : 'desc'; ?>')">
+                                                        Total Bill 
+                                                        <i class="fas fa-sort ms-1 text-muted"></i>
+                                                    </th>
+                                                    <th class="text-end" style="cursor:pointer" onclick="applySort('outstanding_<?php echo ($wa_sort == 'outstanding_desc') ? 'asc' : 'desc'; ?>')">
+                                                        Outstanding 
+                                                        <?php if ($wa_sort == 'outstanding_desc'): ?><i class="fas fa-sort-amount-down ms-1"></i>
+                                                        <?php elseif ($wa_sort == 'outstanding_asc'): ?><i class="fas fa-sort-amount-up ms-1"></i>
+                                                        <?php else: ?><i class="fas fa-sort ms-1 text-muted"></i>
+                                                        <?php endif; ?>
+                                                    </th>
                                                     <th class="text-center">Status</th>
                                                     <th class="text-center">Action</th>
                                                 </tr>
@@ -1404,7 +1425,7 @@ foreach ($outstanding_invoices as $inv) {
     <div class="modal fade" id="whatsappPreviewModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <form method="POST" id="waPreviewForm">
+                <form method="POST" action="payments.php" id="waPreviewForm">
                     <!-- Hidden fields for form submission -->
                     <input type="hidden" name="wa_type" id="wa_type" value="">
                     <input type="hidden" name="send_reminder" id="wa_send_reminder" value="">
@@ -1557,6 +1578,14 @@ foreach ($outstanding_invoices as $inv) {
         document.getElementById('mp_amount').value = outstanding;
         
         new bootstrap.Modal(document.getElementById('markPaymentModal')).show();
+    }
+    
+    // Sorting function for table headers
+    function applySort(sortValue) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', 'whatsapp');
+        url.searchParams.set('wa_sort', sortValue);
+        window.location.href = url.toString();
     }
     </script>
 </body>
