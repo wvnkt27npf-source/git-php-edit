@@ -49,8 +49,10 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
         'Outstanding', 'Status', 'Remarks'
     ]);
     
-    $export_query = "SELECT i.*, c.party_name, c.phone as party_phone, c.agent_name, c.agent_phone
-                     FROM invoices i LEFT JOIN clients c ON i.party_id = c.id
+    $export_query = "SELECT i.*, p.party_name, p.phone as party_phone, a.agent_name, a.phone as agent_phone
+                     FROM invoices i 
+                     LEFT JOIN parties p ON i.party_id = p.id
+                     LEFT JOIN agents a ON p.agent_id = a.id
                      ORDER BY i.date DESC, i.id DESC";
     
     $result = $conn->query($export_query);
@@ -85,9 +87,9 @@ if (isset($_GET['get_invoice']) && isset($_GET['id'])) {
     header('Content-Type: application/json');
     $inv_id = intval($_GET['id']);
     
-    $result = $conn->query("SELECT i.*, c.party_name 
+    $result = $conn->query("SELECT i.*, p.party_name 
                             FROM invoices i 
-                            LEFT JOIN clients c ON i.party_id = c.id 
+                            LEFT JOIN parties p ON i.party_id = p.id 
                             WHERE i.id = $inv_id");
     
     if ($result->num_rows > 0) {
@@ -179,11 +181,11 @@ if (isset($_POST['import_csv']) && !empty($_FILES['csv_file']['name'])) {
             }
             
             // Find or create party
-            $party_check = $conn->query("SELECT id FROM clients WHERE party_name = '$party_name'");
+            $party_check = $conn->query("SELECT id FROM parties WHERE party_name = '$party_name'");
             if ($party_check->num_rows > 0) {
                 $party_id = $party_check->fetch_assoc()['id'];
             } else {
-                $conn->query("INSERT INTO clients (party_name, phone) VALUES ('$party_name', '$party_phone')");
+                $conn->query("INSERT INTO parties (party_name, phone) VALUES ('$party_name', '$party_phone')");
                 $party_id = $conn->insert_id;
             }
             
@@ -232,8 +234,7 @@ if (isset($_POST['edit_invoice'])) {
         date = '$invoice_date',
         party_id = $party_id,
         total_amount = $total_amount,
-        remarks = '$remarks',
-        updated_at = NOW()
+        remarks = '$remarks'
     WHERE id = $inv_id");
     
     $alert_script = "<script>Swal.fire('Updated!','Invoice updated successfully','success').then(()=>window.location='invoices.php');</script>";
@@ -391,7 +392,7 @@ if (isset($_POST['create_inv'])) {
 // =====================================================
 $pending_invoices = [];
 $completed_invoices = [];
-$res = $conn->query("SELECT i.*, COALESCE(c.party_name, 'Unknown Client') as party_name FROM invoices i LEFT JOIN clients c ON i.party_id=c.id ORDER BY i.id DESC");
+$res = $conn->query("SELECT i.*, COALESCE(p.party_name, 'Unknown Party') as party_name FROM invoices i LEFT JOIN parties p ON i.party_id=p.id ORDER BY i.id DESC");
 
 while($row = $res->fetch_assoc()) {
     $has_all_docs = (!empty($row['invoice_path']) && !empty($row['packing_path']) && !empty($row['bilti_path']));
@@ -694,7 +695,7 @@ while($row = $res->fetch_assoc()) {
                         <select name="party_id" class="form-select form-select-lg select2-modal" required style="width: 100%;">
                             <option value="">Choose Client...</option>
                             <?php 
-                            $c = $conn->query("SELECT * FROM clients ORDER BY party_name ASC");
+                            $c = $conn->query("SELECT * FROM parties ORDER BY party_name ASC");
                             while($r=$c->fetch_assoc()) echo "<option value='{$r['id']}'>".htmlspecialchars($r['party_name'])."</option>";
                             ?>
                         </select>
@@ -768,7 +769,7 @@ while($row = $res->fetch_assoc()) {
                         <select name="party_id" id="edit_party_id" class="form-select form-select-lg" required>
                             <option value="">-- Select Party --</option>
                             <?php
-                            $parties = $conn->query("SELECT id, party_name FROM clients ORDER BY party_name");
+                            $parties = $conn->query("SELECT id, party_name FROM parties ORDER BY party_name");
                             while ($p = $parties->fetch_assoc()) {
                                 echo '<option value="'.$p['id'].'">'.htmlspecialchars($p['party_name']).'</option>';
                             }
