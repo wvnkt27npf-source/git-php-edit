@@ -346,7 +346,7 @@ $where_conditions = ["i.status NOT IN ('Closed', 'Paid')", "(COALESCE(i.total_am
 
 if (!empty($search_query)) {
     $search_escaped = $conn->real_escape_string($search_query);
-    $where_conditions[] = "(i.invoice_no LIKE '%$search_escaped%' OR c.party_name LIKE '%$search_escaped%' OR c.agent_name LIKE '%$search_escaped%')";
+    $where_conditions[] = "(i.invoice_no LIKE '%$search_escaped%' OR p.party_name LIKE '%$search_escaped%' OR a.agent_name LIKE '%$search_escaped%')";
 }
 if (!empty($date_from)) {
     $where_conditions[] = "i.date >= '$date_from'";
@@ -357,7 +357,7 @@ if (!empty($date_to)) {
 
 $where_clause = implode(' AND ', $where_conditions);
 
-// Outstanding Invoices Query (Bill-wise)
+// Outstanding Invoices Query (Bill-wise) - UPDATED: Join with parties and agents tables
 $outstanding_query = "SELECT 
     i.id as invoice_id,
     i.invoice_no,
@@ -365,13 +365,14 @@ $outstanding_query = "SELECT
     i.total_amount,
     COALESCE(i.paid_amount, 0) as paid_amount,
     (COALESCE(i.total_amount, 0) - COALESCE(i.paid_amount, 0)) as outstanding,
-    c.id as client_id,
-    c.party_name,
-    c.phone as party_phone,
-    c.agent_name,
-    c.agent_phone
+    p.id as client_id,
+    p.party_name,
+    p.phone as party_phone,
+    a.agent_name,
+    a.phone as agent_phone
 FROM invoices i
-LEFT JOIN clients c ON i.party_id = c.id
+LEFT JOIN parties p ON i.party_id = p.id
+LEFT JOIN agents a ON p.agent_id = a.id
 WHERE $where_clause
 ORDER BY i.date DESC";
 
@@ -391,15 +392,15 @@ if ($outstanding_result && $outstanding_result->num_rows > 0) {
 }
 
 // =====================================================
-// PAYMENT HISTORY
+// PAYMENT HISTORY - UPDATED: Join with parties table
 // =====================================================
 $history_query = "SELECT 
     pr.*,
     i.invoice_no,
-    c.party_name
+    p.party_name
 FROM payment_receipts pr
 JOIN invoices i ON pr.invoice_id = i.id
-LEFT JOIN clients c ON i.party_id = c.id
+LEFT JOIN parties p ON i.party_id = p.id
 ORDER BY pr.received_date DESC, pr.id DESC
 LIMIT 100";
 $history_result = $conn->query($history_query);
@@ -415,14 +416,14 @@ WHERE pr.received_date = CURDATE()";
 $today_result = $conn->query($today_query);
 $today_data = $today_result ? $today_result->fetch_assoc() : ['total_collected' => 0, 'receipt_count' => 0];
 
-// Today's detailed receipts
+// Today's detailed receipts - UPDATED: Join with parties table
 $today_detail_query = "SELECT 
     pr.*,
     i.invoice_no,
-    c.party_name
+    p.party_name
 FROM payment_receipts pr
 JOIN invoices i ON pr.invoice_id = i.id
-LEFT JOIN clients c ON i.party_id = c.id
+LEFT JOIN parties p ON i.party_id = p.id
 WHERE pr.received_date = CURDATE()
 ORDER BY pr.id DESC";
 $today_detail_result = $conn->query($today_detail_query);
