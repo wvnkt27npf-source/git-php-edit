@@ -1490,7 +1490,7 @@ foreach ($outstanding_invoices as $inv) {
     // Format number in Indian format
     function formatIndianNumber(num) {
         num = parseLocalizedNumber(num);
-        return num.toLocaleString('en-IN', {maximumFractionDigits: 0});
+        return num.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
     
     // Update character count
