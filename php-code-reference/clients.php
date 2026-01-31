@@ -2,6 +2,35 @@
 include 'db.php';
 
 // ==============================
+// EXPORT LOGIC (Must be before header.php)
+// ==============================
+if (isset($_POST['export_agents_csv'])) {
+    ob_end_clean(); 
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="agents_export.csv"');
+    $output = fopen('php://output', 'w');
+    fputcsv($output, array('ID', 'AgentName', 'Email', 'Phone', 'WAGroupID'));
+    
+    $rows = $conn->query("SELECT id, agent_name, email, phone, wa_group_id FROM agents ORDER BY id");
+    while ($row = $rows->fetch_assoc()) fputcsv($output, $row);
+    fclose($output);
+    exit();
+}
+
+if (isset($_POST['export_parties_csv'])) {
+    ob_end_clean(); 
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="parties_export.csv"');
+    $output = fopen('php://output', 'w');
+    fputcsv($output, array('ID', 'PartyName', 'Email', 'Phone', 'GSTIN', 'Address', 'ContactPerson', 'AgentID', 'WAGroupID'));
+    
+    $rows = $conn->query("SELECT id, party_name, email, phone, gstin, address, contact_person, agent_id, wa_group_id FROM parties ORDER BY id");
+    while ($row = $rows->fetch_assoc()) fputcsv($output, $row);
+    fclose($output);
+    exit();
+}
+
+// ==============================
 // AGENTS CRUD OPERATIONS
 // ==============================
 
@@ -38,6 +67,54 @@ if (isset($_POST['add_agent'])) {
     if($stmt->execute()) echo "<script>Swal.fire('Saved', 'Agent Added', 'success').then(() => { window.location='clients.php'; });</script>";
 }
 
+// --- IMPORT AGENTS CSV (UPSERT) ---
+if (isset($_POST['import_agents_csv']) && $_FILES['agents_csv_file']['tmp_name']) {
+    $handle = fopen($_FILES['agents_csv_file']['tmp_name'], "r");
+    $first_line = fgetcsv($handle); // Skip Header
+    
+    $inserted = 0; $updated = 0;
+
+    while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+        // Handle tab-separated or comma-separated
+        if (count($data) == 1 && strpos($data[0], "\t") !== false) {
+            $data = explode("\t", $data[0]);
+        }
+        
+        $id = isset($data[0]) ? trim($data[0]) : '';
+        $agent_name = $data[1] ?? '';
+        $email = $data[2] ?? '';
+        $phone = $data[3] ?? '';
+        $wa_group = $data[4] ?? '';
+
+        if (empty($agent_name)) continue; // Skip empty rows
+
+        $exists = false;
+        if (!empty($id) && is_numeric($id)) {
+            $check_query = $conn->query("SELECT id FROM agents WHERE id='$id'");
+            if ($check_query && $check_query->num_rows > 0) $exists = true;
+        }
+
+        if ($exists) {
+            $stmt = $conn->prepare("UPDATE agents SET agent_name=?, email=?, phone=?, wa_group_id=? WHERE id=?");
+            $stmt->bind_param("ssssi", $agent_name, $email, $phone, $wa_group, $id);
+            $stmt->execute();
+            $updated++;
+        } else {
+            if (!empty($id) && is_numeric($id)) {
+                $stmt = $conn->prepare("INSERT INTO agents (id, agent_name, email, phone, wa_group_id) VALUES (?, ?, ?, ?, ?)");
+                $stmt->bind_param("issss", $id, $agent_name, $email, $phone, $wa_group);
+            } else {
+                $stmt = $conn->prepare("INSERT INTO agents (agent_name, email, phone, wa_group_id) VALUES (?, ?, ?, ?)");
+                $stmt->bind_param("ssss", $agent_name, $email, $phone, $wa_group);
+            }
+            $stmt->execute();
+            $inserted++;
+        }
+    }
+    fclose($handle);
+    echo "<script>Swal.fire('Success', 'Agents Import Complete!<br>Added: $inserted | Updated: $updated', 'success').then(() => { window.location='clients.php'; });</script>";
+}
+
 // ==============================
 // PARTIES CRUD OPERATIONS
 // ==============================
@@ -58,9 +135,9 @@ if (isset($_POST['delete_party'])) {
 // --- UPDATE PARTY ---
 if (isset($_POST['update_party'])) {
     $id = $_POST['edit_party_id'];
-    $stmt = $conn->prepare("UPDATE parties SET party_name=?, email=?, phone=?, gstin=?, address=?, contact_person=?, agent_id=?, wa_group_id=? WHERE id=?");
     $agent_id = !empty($_POST['party_agent_id']) ? $_POST['party_agent_id'] : null;
-    $stmt->bind_param("ssssssisd", $_POST['party_name'], $_POST['party_email'], $_POST['party_phone'], $_POST['party_gstin'], $_POST['party_addr'], $_POST['party_cp'], $agent_id, $_POST['party_wa_group'], $id);
+    $stmt = $conn->prepare("UPDATE parties SET party_name=?, email=?, phone=?, gstin=?, address=?, contact_person=?, agent_id=?, wa_group_id=? WHERE id=?");
+    $stmt->bind_param("ssssssisi", $_POST['party_name'], $_POST['party_email'], $_POST['party_phone'], $_POST['party_gstin'], $_POST['party_addr'], $_POST['party_cp'], $agent_id, $_POST['party_wa_group'], $id);
     
     if($stmt->execute()){
          echo "<script>Swal.fire('Updated', 'Party Details Updated Successfully', 'success').then(() => { window.location='clients.php'; });</script>";
@@ -73,37 +150,60 @@ if (isset($_POST['update_party'])) {
 if (isset($_POST['add_party'])) {
     $agent_id = !empty($_POST['party_agent_id']) ? $_POST['party_agent_id'] : null;
     $stmt = $conn->prepare("INSERT INTO parties (party_name, email, phone, gstin, address, contact_person, agent_id, wa_group_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("ssssssss", $_POST['party_name'], $_POST['party_email'], $_POST['party_phone'], $_POST['party_gstin'], $_POST['party_addr'], $_POST['party_cp'], $agent_id, $_POST['party_wa_group']);
+    $stmt->bind_param("ssssssis", $_POST['party_name'], $_POST['party_email'], $_POST['party_phone'], $_POST['party_gstin'], $_POST['party_addr'], $_POST['party_cp'], $agent_id, $_POST['party_wa_group']);
     if($stmt->execute()) echo "<script>Swal.fire('Saved', 'Party Added', 'success').then(() => { window.location='clients.php'; });</script>";
 }
 
-// ==============================
-// EXPORT LOGIC
-// ==============================
-if (isset($_POST['export_agents_csv'])) {
-    ob_end_clean(); 
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="agents_export.csv"');
-    $output = fopen('php://output', 'w');
-    fputcsv($output, array('ID', 'Agent Name', 'Email', 'Phone', 'WA Group ID'));
+// --- IMPORT PARTIES CSV (UPSERT) ---
+if (isset($_POST['import_parties_csv']) && $_FILES['parties_csv_file']['tmp_name']) {
+    $handle = fopen($_FILES['parties_csv_file']['tmp_name'], "r");
+    $first_line = fgetcsv($handle); // Skip Header
     
-    $rows = $conn->query("SELECT id, agent_name, email, phone, wa_group_id FROM agents");
-    while ($row = $rows->fetch_assoc()) fputcsv($output, $row);
-    fclose($output);
-    exit();
-}
+    $inserted = 0; $updated = 0;
 
-if (isset($_POST['export_parties_csv'])) {
-    ob_end_clean(); 
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="parties_export.csv"');
-    $output = fopen('php://output', 'w');
-    fputcsv($output, array('ID', 'Party Name', 'Email', 'Phone', 'GSTIN', 'Address', 'Contact Person', 'Agent ID', 'WA Group ID'));
-    
-    $rows = $conn->query("SELECT id, party_name, email, phone, gstin, address, contact_person, agent_id, wa_group_id FROM parties");
-    while ($row = $rows->fetch_assoc()) fputcsv($output, $row);
-    fclose($output);
-    exit();
+    while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+        // Handle tab-separated or comma-separated
+        if (count($data) == 1 && strpos($data[0], "\t") !== false) {
+            $data = explode("\t", $data[0]);
+        }
+        
+        $id = isset($data[0]) ? trim($data[0]) : '';
+        $party_name = $data[1] ?? '';
+        $email = $data[2] ?? '';
+        $phone = $data[3] ?? '';
+        $gstin = $data[4] ?? '';
+        $address = $data[5] ?? '';
+        $contact_person = $data[6] ?? '';
+        $agent_id = !empty($data[7]) ? trim($data[7]) : null;
+        $wa_group = $data[8] ?? '';
+
+        if (empty($party_name)) continue; // Skip empty rows
+
+        $exists = false;
+        if (!empty($id) && is_numeric($id)) {
+            $check_query = $conn->query("SELECT id FROM parties WHERE id='$id'");
+            if ($check_query && $check_query->num_rows > 0) $exists = true;
+        }
+
+        if ($exists) {
+            $stmt = $conn->prepare("UPDATE parties SET party_name=?, email=?, phone=?, gstin=?, address=?, contact_person=?, agent_id=?, wa_group_id=? WHERE id=?");
+            $stmt->bind_param("ssssssisi", $party_name, $email, $phone, $gstin, $address, $contact_person, $agent_id, $wa_group, $id);
+            $stmt->execute();
+            $updated++;
+        } else {
+            if (!empty($id) && is_numeric($id)) {
+                $stmt = $conn->prepare("INSERT INTO parties (id, party_name, email, phone, gstin, address, contact_person, agent_id, wa_group_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param("issssssss", $id, $party_name, $email, $phone, $gstin, $address, $contact_person, $agent_id, $wa_group);
+            } else {
+                $stmt = $conn->prepare("INSERT INTO parties (party_name, email, phone, gstin, address, contact_person, agent_id, wa_group_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param("ssssssis", $party_name, $email, $phone, $gstin, $address, $contact_person, $agent_id, $wa_group);
+            }
+            $stmt->execute();
+            $inserted++;
+        }
+    }
+    fclose($handle);
+    echo "<script>Swal.fire('Success', 'Parties Import Complete!<br>Added: $inserted | Updated: $updated', 'success').then(() => { window.location='clients.php'; });</script>";
 }
 
 // Get agents for dropdown
@@ -120,6 +220,7 @@ include 'header.php';
 .nav-pills .nav-link.active { background-color: #343a40; }
 .table-section { display: none; }
 .table-section.active { display: block; }
+.import-box { background: #f8f9fa; border: 1px dashed #dee2e6; border-radius: 8px; padding: 10px; }
 </style>
 
 <!-- Tab Navigation -->
@@ -136,15 +237,25 @@ include 'header.php';
 <!-- PARTIES SECTION -->
 <!-- ========================== -->
 <div id="parties-section" class="table-section active">
-    <div class="row mb-4">
-        <div class="col-12 d-flex justify-content-between align-items-center">
-            <h4><i class="fas fa-building"></i> Party Master</h4>
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPartyModal"><i class="fas fa-plus"></i> Add New Party</button>
-                <form method="POST">
-                    <button type="submit" name="export_parties_csv" class="btn btn-success"><i class="fas fa-file-excel"></i> Export</button>
-                </form>
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h4 class="mb-0"><i class="fas fa-building"></i> Party Master</h4>
+                <div class="d-flex gap-2 flex-wrap align-items-center">
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPartyModal"><i class="fas fa-plus"></i> Add Party</button>
+                    
+                    <!-- Import Box -->
+                    <form method="POST" enctype="multipart/form-data" class="d-flex gap-2 align-items-center import-box">
+                        <input type="file" name="parties_csv_file" class="form-control form-control-sm" style="width: 180px;" accept=".csv" required>
+                        <button type="submit" name="import_parties_csv" class="btn btn-sm btn-warning fw-bold"><i class="fas fa-file-import"></i> Import</button>
+                    </form>
+                    
+                    <form method="POST">
+                        <button type="submit" name="export_parties_csv" class="btn btn-success"><i class="fas fa-file-excel"></i> Export</button>
+                    </form>
+                </div>
             </div>
+            <small class="text-muted">CSV Format: ID, PartyName, Email, Phone, GSTIN, Address, ContactPerson, AgentID, WAGroupID</small>
         </div>
     </div>
 
@@ -211,15 +322,25 @@ include 'header.php';
 <!-- AGENTS SECTION -->
 <!-- ========================== -->
 <div id="agents-section" class="table-section">
-    <div class="row mb-4">
-        <div class="col-12 d-flex justify-content-between align-items-center">
-            <h4><i class="fas fa-user-tie"></i> Agent Master</h4>
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAgentModal"><i class="fas fa-plus"></i> Add New Agent</button>
-                <form method="POST">
-                    <button type="submit" name="export_agents_csv" class="btn btn-success"><i class="fas fa-file-excel"></i> Export</button>
-                </form>
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h4 class="mb-0"><i class="fas fa-user-tie"></i> Agent Master</h4>
+                <div class="d-flex gap-2 flex-wrap align-items-center">
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAgentModal"><i class="fas fa-plus"></i> Add Agent</button>
+                    
+                    <!-- Import Box -->
+                    <form method="POST" enctype="multipart/form-data" class="d-flex gap-2 align-items-center import-box">
+                        <input type="file" name="agents_csv_file" class="form-control form-control-sm" style="width: 180px;" accept=".csv" required>
+                        <button type="submit" name="import_agents_csv" class="btn btn-sm btn-warning fw-bold"><i class="fas fa-file-import"></i> Import</button>
+                    </form>
+                    
+                    <form method="POST">
+                        <button type="submit" name="export_agents_csv" class="btn btn-success"><i class="fas fa-file-excel"></i> Export</button>
+                    </form>
+                </div>
             </div>
+            <small class="text-muted">CSV Format: ID, AgentName, Email, Phone, WAGroupID</small>
         </div>
     </div>
 
@@ -317,7 +438,7 @@ include 'header.php';
                     </div>
                     <div class="col-md-6">
                         <label class="small fw-bold">Group ID</label>
-                        <input type="text" name="party_wa_group" id="party_wa_group_id" class="form-control bg-light" placeholder="Auto-fetched" readonly>
+                        <input type="text" name="party_wa_group" id="party_wa_group_id" class="form-control bg-light" placeholder="Auto-fetched or manual">
                     </div>
                     
                     <div class="col-12 text-end"><button type="submit" name="add_party" class="btn btn-primary"><i class="fas fa-save"></i> Save Party</button></div>
@@ -372,7 +493,7 @@ include 'header.php';
                     </div>
                     <div class="col-md-6">
                         <label class="small fw-bold">Group ID</label>
-                        <input type="text" name="party_wa_group" id="ep_wa_group" class="form-control bg-light" readonly>
+                        <input type="text" name="party_wa_group" id="ep_wa_group" class="form-control bg-light">
                     </div>
                     
                     <div class="col-12 text-end"><button type="submit" name="update_party" class="btn btn-info text-white"><i class="fas fa-save"></i> Update Party</button></div>
@@ -411,7 +532,7 @@ include 'header.php';
                     </div>
                     <div class="col-4">
                         <label class="small fw-bold">Group ID</label>
-                        <input type="text" name="agent_wa_group" id="agent_wa_group_id" class="form-control bg-light" readonly>
+                        <input type="text" name="agent_wa_group" id="agent_wa_group_id" class="form-control bg-light">
                     </div>
                     
                     <div class="col-12 text-end"><button type="submit" name="add_agent" class="btn btn-primary"><i class="fas fa-save"></i> Save Agent</button></div>
@@ -451,7 +572,7 @@ include 'header.php';
                     </div>
                     <div class="col-4">
                         <label class="small fw-bold">Group ID</label>
-                        <input type="text" name="agent_wa_group" id="ea_wa_group" class="form-control bg-light" readonly>
+                        <input type="text" name="agent_wa_group" id="ea_wa_group" class="form-control bg-light">
                     </div>
                     
                     <div class="col-12 text-end"><button type="submit" name="update_agent" class="btn btn-info text-white"><i class="fas fa-save"></i> Update Agent</button></div>
@@ -475,11 +596,11 @@ function switchTab(tab) {
 function editParty(data) {
     document.getElementById('ep_id').value = data.id;
     document.getElementById('ep_name').value = data.party_name;
-    document.getElementById('ep_email').value = data.email;
-    document.getElementById('ep_phone').value = data.phone;
-    document.getElementById('ep_gstin').value = data.gstin;
-    document.getElementById('ep_cp').value = data.contact_person;
-    document.getElementById('ep_addr').value = data.address;
+    document.getElementById('ep_email').value = data.email || '';
+    document.getElementById('ep_phone').value = data.phone || '';
+    document.getElementById('ep_gstin').value = data.gstin || '';
+    document.getElementById('ep_cp').value = data.contact_person || '';
+    document.getElementById('ep_addr').value = data.address || '';
     document.getElementById('ep_agent_id').value = data.agent_id || '';
     document.getElementById('ep_wa_group').value = data.wa_group_id || '';
     document.getElementById('ep_wa_group_name').value = '';
@@ -491,8 +612,8 @@ function editParty(data) {
 function editAgent(data) {
     document.getElementById('ea_id').value = data.id;
     document.getElementById('ea_name').value = data.agent_name;
-    document.getElementById('ea_email').value = data.email;
-    document.getElementById('ea_phone').value = data.phone;
+    document.getElementById('ea_email').value = data.email || '';
+    document.getElementById('ea_phone').value = data.phone || '';
     document.getElementById('ea_wa_group').value = data.wa_group_id || '';
     document.getElementById('ea_wa_group_name').value = '';
     
