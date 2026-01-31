@@ -241,37 +241,29 @@ if (isset($_POST['send_reminder'])) {
     $bills = $_POST['bills'];
     $party_name = $_POST['party_name'];
     
-    // Use custom message if provided (from modal), otherwise build default
-    if (!empty($_POST['custom_message'])) {
-        $message = $_POST['custom_message'];
-    } else {
-        $message = buildReminderMessage(
-            $party_name, 
-            $bills, 
-            $total_amount, 
-            $outstanding_amount, 
-            $company_name, 
-            $sender_name, 
-            $company_phone,
-            false
-        );
-    }
+    // Build professional message with signature
+    $message = buildReminderMessage(
+        $party_name, 
+        $bills, 
+        $total_amount, 
+        $outstanding_amount, 
+        $company_name, 
+        $sender_name, 
+        $company_phone,
+        false
+    );
     
     $result = sendWhatsAppReminder($send_to, $message, $ultramsg_token, $ultramsg_instance);
     
     if (isset($result['sent']) && $result['sent'] == 'true') {
         // Log the successful send
         logReminderSent($conn, $client_id, 'Party', $send_to, 'Sent');
-        // Redirect to WhatsApp tab with success message
-        header("Location: payments.php?tab=whatsapp&msg=sent&name=" . urlencode($party_name));
-        exit;
+        $alert_script = "<script>Swal.fire('Sent!', 'Reminder sent to $party_name successfully', 'success');</script>";
     } else {
         // Log the failed attempt
         logReminderSent($conn, $client_id, 'Party', $send_to, 'Failed');
         $error_msg = $result['error'] ?? 'Unknown error';
-        // Redirect to WhatsApp tab with error
-        header("Location: payments.php?tab=whatsapp&msg=error&error=" . urlencode($error_msg));
-        exit;
+        $alert_script = "<script>Swal.fire('Error', 'Failed to send: $error_msg', 'error');</script>";
     }
 }
 
@@ -283,23 +275,19 @@ if (isset($_POST['send_agent_reminder'])) {
     $parties_list = $_POST['parties_list'];
     $client_ids = explode(',', $_POST['client_ids'] ?? '');
     
-    // Use custom message if provided (from modal), otherwise build default
-    if (!empty($_POST['custom_message'])) {
-        $message = $_POST['custom_message'];
-    } else {
-        $message = buildReminderMessage(
-            '', 
-            '', 
-            $total_amount, 
-            $total_amount, 
-            $company_name, 
-            $sender_name, 
-            $company_phone,
-            true,
-            $agent_name,
-            $parties_list
-        );
-    }
+    // Build professional message with signature
+    $message = buildReminderMessage(
+        '', 
+        '', 
+        $total_amount, 
+        $total_amount, 
+        $company_name, 
+        $sender_name, 
+        $company_phone,
+        true,
+        $agent_name,
+        $parties_list
+    );
     
     $result = sendWhatsAppReminder($agent_phone, $message, $ultramsg_token, $ultramsg_instance);
     
@@ -311,9 +299,7 @@ if (isset($_POST['send_agent_reminder'])) {
                 logReminderSent($conn, $cid, 'Agent', $agent_phone, 'Sent');
             }
         }
-        // Redirect to WhatsApp tab with success message
-        header("Location: payments.php?tab=whatsapp&msg=sent&name=" . urlencode($agent_name));
-        exit;
+        $alert_script = "<script>Swal.fire('Sent!', 'Reminder sent to Agent $agent_name successfully', 'success');</script>";
     } else {
         // Log failed for all clients
         foreach ($client_ids as $cid) {
@@ -323,9 +309,7 @@ if (isset($_POST['send_agent_reminder'])) {
             }
         }
         $error_msg = $result['error'] ?? 'Unknown error';
-        // Redirect to WhatsApp tab with error
-        header("Location: payments.php?tab=whatsapp&msg=error&error=" . urlencode($error_msg));
-        exit;
+        $alert_script = "<script>Swal.fire('Error', 'Failed to send: $error_msg', 'error');</script>";
     }
 }
 
@@ -597,19 +581,7 @@ foreach ($outstanding_invoices as $inv) {
     </style>
 </head>
 <body>
-    <?php 
-    // Handle success/error messages from redirect
-    if (isset($_GET['msg'])) {
-        $msg_name = htmlspecialchars($_GET['name'] ?? 'Party');
-        if ($_GET['msg'] == 'sent') {
-            echo "<script>Swal.fire('Sent!', 'Reminder sent to $msg_name successfully', 'success');</script>";
-        } elseif ($_GET['msg'] == 'error') {
-            $error_msg = htmlspecialchars($_GET['error'] ?? 'Unknown error');
-            echo "<script>Swal.fire('Error', 'Failed to send: $error_msg', 'error');</script>";
-        }
-    }
-    echo $alert_script; 
-    ?>
+    <?php echo $alert_script; ?>
     
     <div class="container-fluid py-4">
         <!-- Page Header -->
@@ -1105,36 +1077,18 @@ foreach ($outstanding_invoices as $inv) {
                                                     </small>
                                                 <?php endif; ?>
                                             </div>
-                                            <?php 
-                                                // Pre-build the agent message for preview
-                                                $agent_preview_msg = buildReminderMessage(
-                                                    '', 
-                                                    '', 
-                                                    $agent['total_outstanding'], 
-                                                    $agent['total_outstanding'], 
-                                                    $company_name, 
-                                                    $sender_name, 
-                                                    $company_phone,
-                                                    true,
-                                                    $agent['agent_name'],
-                                                    $parties_list
-                                                );
-                                            ?>
-                                            <button type="button" class="btn btn-whatsapp btn-sm" 
-                                                onclick="openWhatsAppPreview(
-                                                    'agent',
-                                                    0,
-                                                    '<?php echo htmlspecialchars(addslashes($agent['agent_name'])); ?>',
-                                                    '<?php echo htmlspecialchars($agent['agent_phone']); ?>',
-                                                    <?php echo $agent['total_outstanding']; ?>,
-                                                    <?php echo $agent['total_outstanding']; ?>,
-                                                    <?php echo json_encode($agent_preview_msg); ?>,
-                                                    '<?php echo htmlspecialchars(addslashes($parties_list)); ?>',
-                                                    '<?php echo implode(',', $agent['client_ids']); ?>'
-                                                )">
-                                                <i class="fab fa-whatsapp"></i> 
-                                                <?php echo $is_sent ? 'Re-send' : 'Send'; ?> to Agent
-                                            </button>
+                                            <form method="POST" class="d-inline">
+                                                <input type="hidden" name="send_agent_reminder" value="1">
+                                                <input type="hidden" name="agent_phone" value="<?php echo htmlspecialchars($agent['agent_phone']); ?>">
+                                                <input type="hidden" name="agent_name" value="<?php echo htmlspecialchars($agent['agent_name']); ?>">
+                                                <input type="hidden" name="total_amount" value="<?php echo $agent['total_outstanding']; ?>">
+                                                <input type="hidden" name="parties_list" value="<?php echo htmlspecialchars($parties_list); ?>">
+                                                <input type="hidden" name="client_ids" value="<?php echo implode(',', $agent['client_ids']); ?>">
+                                                <button type="submit" class="btn btn-whatsapp btn-sm">
+                                                    <i class="fab fa-whatsapp"></i> 
+                                                    <?php echo $is_sent ? 'Re-send' : 'Send'; ?> to Agent
+                                                </button>
+                                            </form>
                                         </div>
                                         
                                         <!-- Invoices Table -->
@@ -1193,12 +1147,6 @@ foreach ($outstanding_invoices as $inv) {
 
                     <!-- DIRECT PARTIES TAB -->
                     <div class="tab-pane fade" id="direct-parties" role="tabpanel">
-                        <?php 
-                        // Ensure filter variables are defined for Direct Parties
-                        $wa_search = strtolower($_GET['wa_search'] ?? '');
-                        $wa_status = $_GET['wa_status'] ?? 'all';
-                        $wa_sort = $_GET['wa_sort'] ?? 'outstanding_desc';
-                        ?>
                         <?php if (count($party_direct) > 0): ?>
                             <div class="card">
                                 <div class="card-header" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
@@ -1220,10 +1168,7 @@ foreach ($outstanding_invoices as $inv) {
                                                     </th>
                                                     <th>Phone</th>
                                                     <th class="text-center">Bills</th>
-                                                    <th class="text-end" style="cursor:pointer" onclick="applySort('outstanding_<?php echo ($wa_sort == 'outstanding_desc') ? 'asc' : 'desc'; ?>')">
-                                                        Total Bill 
-                                                        <i class="fas fa-sort ms-1 text-muted"></i>
-                                                    </th>
+                                                    <th class="text-end">Total Bill</th>
                                                     <th class="text-end" style="cursor:pointer" onclick="applySort('outstanding_<?php echo ($wa_sort == 'outstanding_desc') ? 'asc' : 'desc'; ?>')">
                                                         Outstanding 
                                                         <?php if ($wa_sort == 'outstanding_desc'): ?><i class="fas fa-sort-amount-down ms-1"></i>
@@ -1308,34 +1253,21 @@ foreach ($outstanding_invoices as $inv) {
                                                             <?php endif; ?>
                                                         </td>
                                                         <td class="text-center">
-                                                            <?php if (!empty($party['party_phone'])): 
-                                                                // Pre-build the message for preview
-                                                                $preview_msg = buildReminderMessage(
-                                                                    $party['party_name'], 
-                                                                    $bill_details, 
-                                                                    $party['total_bill'], 
-                                                                    $party['total_outstanding'], 
-                                                                    $company_name, 
-                                                                    $sender_name, 
-                                                                    $company_phone,
-                                                                    false
-                                                                );
-                                                            ?>
-                                                                <button type="button" class="btn btn-whatsapp btn-sm" 
-                                                                    onclick="openWhatsAppPreview(
-                                                                        'party',
-                                                                        <?php echo $party['client_id']; ?>,
-                                                                        '<?php echo htmlspecialchars(addslashes($party['party_name'])); ?>',
-                                                                        '<?php echo htmlspecialchars($party['party_phone']); ?>',
-                                                                        <?php echo $party['total_bill']; ?>,
-                                                                        <?php echo $party['total_outstanding']; ?>,
-                                                                        <?php echo json_encode($preview_msg); ?>,
-                                                                        '<?php echo htmlspecialchars(addslashes($bill_details)); ?>',
-                                                                        ''
-                                                                    )">
-                                                                    <i class="fab fa-whatsapp"></i> 
-                                                                    <?php echo $is_sent ? 'Re-send' : 'Send'; ?>
-                                                                </button>
+                                                            <?php if (!empty($party['party_phone'])): ?>
+                                                                <form method="POST" class="d-inline">
+                                                                    <input type="hidden" name="send_reminder" value="1">
+                                                                    <input type="hidden" name="client_id" value="<?php echo $party['client_id']; ?>">
+                                                                    <input type="hidden" name="send_to" value="<?php echo htmlspecialchars($party['party_phone']); ?>">
+                                                                    <input type="hidden" name="recipient_type" value="Party">
+                                                                    <input type="hidden" name="total_amount" value="<?php echo $party['total_bill']; ?>">
+                                                                    <input type="hidden" name="outstanding_amount" value="<?php echo $party['total_outstanding']; ?>">
+                                                                    <input type="hidden" name="party_name" value="<?php echo htmlspecialchars($party['party_name']); ?>">
+                                                                    <input type="hidden" name="bills" value="<?php echo htmlspecialchars($bill_details); ?>">
+                                                                    <button type="submit" class="btn btn-whatsapp btn-sm">
+                                                                        <i class="fab fa-whatsapp"></i> 
+                                                                        <?php echo $is_sent ? 'Re-send' : 'Send'; ?>
+                                                                    </button>
+                                                                </form>
                                                             <?php else: ?>
                                                                 <span class="text-muted">No Phone</span>
                                                             <?php endif; ?>
@@ -1441,152 +1373,8 @@ foreach ($outstanding_invoices as $inv) {
         </div>
     </div>
 
-    <!-- WhatsApp Preview Modal -->
-    <div class="modal fade" id="whatsappPreviewModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <form method="POST" action="payments.php?tab=whatsapp" id="waPreviewForm">
-                    <!-- Hidden fields for form submission -->
-                    <input type="hidden" name="wa_type" id="wa_type" value="">
-                    <input type="hidden" name="send_reminder" id="wa_send_reminder" value="">
-                    <input type="hidden" name="send_agent_reminder" id="wa_send_agent_reminder" value="">
-                    <input type="hidden" name="client_id" id="wa_client_id" value="">
-                    <input type="hidden" name="send_to" id="wa_send_to" value="">
-                    <input type="hidden" name="recipient_type" id="wa_recipient_type" value="">
-                    <input type="hidden" name="total_amount" id="wa_total_amount" value="">
-                    <input type="hidden" name="outstanding_amount" id="wa_outstanding_amount" value="">
-                    <input type="hidden" name="party_name" id="wa_party_name" value="">
-                    <input type="hidden" name="agent_name" id="wa_agent_name" value="">
-                    <input type="hidden" name="agent_phone" id="wa_agent_phone" value="">
-                    <input type="hidden" name="bills" id="wa_bills" value="">
-                    <input type="hidden" name="parties_list" id="wa_parties_list" value="">
-                    <input type="hidden" name="client_ids" id="wa_client_ids" value="">
-                    
-                    <div class="modal-header" style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); color: white;">
-                        <h5 class="modal-title">
-                            <i class="fab fa-whatsapp fa-lg me-2"></i> 
-                            WhatsApp Message Preview
-                        </h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                    </div>
-                    
-                    <div class="modal-body">
-                        <!-- Recipient Info -->
-                        <div class="alert alert-light border mb-3">
-                            <div class="row align-items-center">
-                                <div class="col-md-6">
-                                    <small class="text-muted d-block">Sending To:</small>
-                                    <strong id="wa_display_name" class="text-primary fs-5"></strong>
-                                </div>
-                                <div class="col-md-6 text-md-end">
-                                    <small class="text-muted d-block">Phone:</small>
-                                    <strong id="wa_display_phone" class="fs-5">
-                                        <i class="fas fa-phone-alt text-success me-1"></i>
-                                        <span id="wa_phone_text"></span>
-                                    </strong>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Amount Summary -->
-                        <div class="row mb-3">
-                            <div class="col-6">
-                                <div class="card bg-light">
-                                    <div class="card-body text-center py-2">
-                                        <small class="text-muted">Total Bill</small>
-                                        <h5 class="mb-0 text-primary" id="wa_display_total"></h5>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="card bg-danger text-white">
-                                    <div class="card-body text-center py-2">
-                                        <small>Outstanding</small>
-                                        <h5 class="mb-0" id="wa_display_outstanding"></h5>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Message Preview & Edit -->
-                        <div class="mb-3">
-                            <label class="form-label d-flex justify-content-between align-items-center">
-                                <strong><i class="fas fa-edit me-1"></i> Message (Editable):</strong>
-                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetMessage()">
-                                    <i class="fas fa-undo"></i> Reset
-                                </button>
-                            </label>
-                            <textarea name="custom_message" id="wa_message_preview" class="form-control" 
-                                      rows="15" style="font-family: monospace; font-size: 13px; line-height: 1.5;"></textarea>
-                            <small class="text-muted">
-                                <i class="fas fa-info-circle"></i> 
-                                Message customize kar sakte ho. *text* = Bold in WhatsApp
-                            </small>
-                        </div>
-                    </div>
-                    
-                    <div class="modal-footer bg-light">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                            <i class="fas fa-times"></i> Cancel
-                        </button>
-                        <button type="submit" class="btn btn-success btn-lg">
-                            <i class="fab fa-whatsapp"></i> Confirm & Send
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-    // Store original message for reset
-    let originalMessage = '';
-    
-    function openWhatsAppPreview(type, clientId, name, phone, totalAmount, outstandingAmount, message, billDetails, clientIds) {
-        // Store original message
-        originalMessage = message;
-        
-        // Set hidden form fields based on type
-        document.getElementById('wa_type').value = type;
-        
-        if (type === 'party') {
-            document.getElementById('wa_send_reminder').value = '1';
-            document.getElementById('wa_send_agent_reminder').value = '';
-            document.getElementById('wa_client_id').value = clientId;
-            document.getElementById('wa_send_to').value = phone;
-            document.getElementById('wa_recipient_type').value = 'Party';
-            document.getElementById('wa_party_name').value = name;
-            document.getElementById('wa_bills').value = billDetails;
-        } else {
-            document.getElementById('wa_send_reminder').value = '';
-            document.getElementById('wa_send_agent_reminder').value = '1';
-            document.getElementById('wa_agent_phone').value = phone;
-            document.getElementById('wa_agent_name').value = name;
-            document.getElementById('wa_parties_list').value = billDetails;
-            document.getElementById('wa_client_ids').value = clientIds;
-        }
-        
-        document.getElementById('wa_total_amount').value = totalAmount;
-        document.getElementById('wa_outstanding_amount').value = outstandingAmount;
-        
-        // Set display fields
-        document.getElementById('wa_display_name').textContent = name;
-        document.getElementById('wa_phone_text').textContent = phone;
-        document.getElementById('wa_display_total').textContent = '₹' + totalAmount.toLocaleString('en-IN', {minimumFractionDigits: 2});
-        document.getElementById('wa_display_outstanding').textContent = '₹' + outstandingAmount.toLocaleString('en-IN', {minimumFractionDigits: 2});
-        
-        // Set message in textarea
-        document.getElementById('wa_message_preview').value = message;
-        
-        // Show modal
-        new bootstrap.Modal(document.getElementById('whatsappPreviewModal')).show();
-    }
-    
-    function resetMessage() {
-        document.getElementById('wa_message_preview').value = originalMessage;
-    }
-    
     function openMarkPaymentModal(invoiceId, invoiceNo, partyName, billAmount, paidAmount, outstanding) {
         document.getElementById('mp_invoice_id').value = invoiceId;
         document.getElementById('mp_invoice_no').textContent = '#' + invoiceNo;
